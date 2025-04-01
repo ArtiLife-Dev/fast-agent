@@ -14,7 +14,7 @@ class Application:
             self.error_console = error_console
 
     def log(self, message: str, level: str = "info") -> None:
-        if level == "info" or (level == "debug" and self.verbosity > 0):
+        if (level == "info" or (level == "debug" and self.verbosity > 0) or level ==  "error"):
             if level == "error":
                 self.error_console.print(f"[{level.upper()}] {message}")
             else:
