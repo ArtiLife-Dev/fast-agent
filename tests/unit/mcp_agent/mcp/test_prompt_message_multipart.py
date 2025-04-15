@@ -163,3 +163,26 @@ class TestPromptMessageMultipart:
         for i in range(len(messages)):
             assert result[i].role == messages[i].role
             assert result[i].content.text == messages[i].content.text
+            
+    def test_from_get_prompt_result(self):
+        """Test from_get_prompt_result method with error handling."""
+        # Test with valid GetPromptResult
+        messages = [
+            PromptMessage(role="user", content=TextContent(type="text", text="Hello")),
+            PromptMessage(role="assistant", content=TextContent(type="text", text="Hi there!")),
+        ]
+        result = GetPromptResult(messages=messages)
+        
+        multiparts = PromptMessageMultipart.from_get_prompt_result(result)
+        assert len(multiparts) == 2
+        assert multiparts[0].role == "user"
+        assert multiparts[1].role == "assistant"
+        
+        # Test with None
+        multiparts = PromptMessageMultipart.from_get_prompt_result(None)
+        assert multiparts == []
+        
+        # Test with empty result
+        empty_result = GetPromptResult(messages=[])
+        multiparts = PromptMessageMultipart.from_get_prompt_result(empty_result)
+        assert multiparts == []

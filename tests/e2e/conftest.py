@@ -69,10 +69,13 @@ def fast_agent(request):
     # Change to the test file's directory
     os.chdir(test_dir)
 
-    # Create agent with local config
+    # Explicitly create absolute path to the config file in the test directory
+    config_file = os.path.join(test_dir, "fastagent.config.yaml")
+    
+    # Create agent with local config using absolute path
     agent = FastAgent(
         "Test Agent",
-        config_path="fastagent.config.yaml",  # Uses local config in test directory
+        config_path=config_file,  # Use absolute path to local config in test directory
         ignore_unknown_args=True,
     )
 

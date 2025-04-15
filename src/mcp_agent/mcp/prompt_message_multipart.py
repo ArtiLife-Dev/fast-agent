@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Optional, Union
 
 from mcp.types import (
     EmbeddedResource,
@@ -9,6 +9,8 @@ from mcp.types import (
     TextContent,
 )
 from pydantic import BaseModel
+
+from mcp_agent.mcp.helpers.content_helpers import get_text
 
 
 class PromptMessageMultipart(BaseModel):
@@ -50,9 +52,72 @@ class PromptMessageMultipart(BaseModel):
 
     def from_multipart(self) -> List[PromptMessage]:
         """Convert this PromptMessageMultipart to a sequence of standard PromptMessages."""
-        return [PromptMessage(role=self.role, content=content_part) for content_part in self.content]
+        return [
+            PromptMessage(role=self.role, content=content_part) for content_part in self.content
+        ]
+
+    def first_text(self) -> str:
+        """
+        Get the first available text content from a message.
+
+        Args:
+            message: A PromptMessage or PromptMessageMultipart
+
+        Returns:
+            First text content or None if no text content exists
+        """
+        for content in self.content:
+            text = get_text(content)
+            if text is not None:
+                return text
+
+        return "<no text>"
+
+    def all_text(self) -> str:
+        """
+        Get all the text available.
+
+        Args:
+            message: A PromptMessage or PromptMessageMultipart
+
+        Returns:
+            First text content or None if no text content exists
+        """
+        result = []
+        for content in self.content:
+            text = get_text(content)
+            if text is not None:
+                result.append(text)
+
+        return "\n".join(result)
 
     @classmethod
     def parse_get_prompt_result(cls, result: GetPromptResult) -> List["PromptMessageMultipart"]:
-        """Parse a GetPromptResult into PromptMessageMultipart objects."""
+        """
+        Parse a GetPromptResult into PromptMessageMultipart objects.
+
+        Args:
+            result: GetPromptResult from MCP server
+
+        Returns:
+            List of PromptMessageMultipart objects
+        """
+        return cls.to_multipart(result.messages)
+
+    @classmethod
+    def from_get_prompt_result(
+        cls, result: Optional[GetPromptResult]
+    ) -> List["PromptMessageMultipart"]:
+        """
+        Convert a GetPromptResult to PromptMessageMultipart objects with error handling.
+        This method safely handles None values and empty results.
+
+        Args:
+            result: GetPromptResult from MCP server or None
+
+        Returns:
+            List of PromptMessageMultipart objects or empty list if result is None/empty
+        """
+        if not result or not result.messages:
+            return []
         return cls.to_multipart(result.messages)

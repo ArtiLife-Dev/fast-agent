@@ -19,7 +19,7 @@ logger:
 mcp:
   servers:
     sampling_test:
-      command: "bash"
-      args: ["-c", "uv run sampling_test_server.py | tee sampling_output.log"]
+      command: "uv"
+      args: ["run", "sampling_test_server.py"]
       sampling:
         model: "passthrough"

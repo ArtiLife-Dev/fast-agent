@@ -12,7 +12,7 @@ from datetime import timedelta
 from typing import AsyncGenerator, Callable, Dict
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from mcp import ClientSession
+from mcp import ClientSession, stdio_client
 from mcp.client.sse import sse_client
 from mcp.client.stdio import (
     StdioServerParameters,
@@ -26,8 +26,8 @@ from mcp_agent.config import (
     get_settings,
 )
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.mcp.logger_textio import get_stderr_handler
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
-from mcp_agent.mcp.stdio import stdio_client_with_rich_stderr
 
 logger = get_logger(__name__)
 
@@ -66,11 +66,15 @@ class ServerRegistry:
             config (Settings): The Settings object containing the server configurations.
             config_path (str): Path to the YAML configuration file.
         """
-        self.registry = self.load_registry_from_file(config_path) if config is None else config.mcp.servers
+        self.registry = (
+            self.load_registry_from_file(config_path) if config is None else config.mcp.servers
+        )
         self.init_hooks: Dict[str, InitHookCallable] = {}
         self.connection_manager = MCPConnectionManager(self)
 
-    def load_registry_from_file(self, config_path: str | None = None) -> Dict[str, MCPServerSettings]:
+    def load_registry_from_file(
+        self, config_path: str | None = None
+    ) -> Dict[str, MCPServerSettings]:
         """
         Load the YAML configuration file and validate it.
 
@@ -110,11 +114,15 @@ class ServerRegistry:
 
         config = self.registry[server_name]
 
-        read_timeout_seconds = timedelta(config.read_timeout_seconds) if config.read_timeout_seconds else None
+        read_timeout_seconds = (
+            timedelta(config.read_timeout_seconds) if config.read_timeout_seconds else None
+        )
 
         if config.transport == "stdio":
             if not config.command or not config.args:
-                raise ValueError(f"Command and args are required for stdio transport: {server_name}")
+                raise ValueError(
+                    f"Command and args are required for stdio transport: {server_name}"
+                )
 
             server_params = StdioServerParameters(
                 command=config.command,
@@ -122,7 +130,8 @@ class ServerRegistry:
                 env={**get_default_environment(), **(config.env or {})},
             )
 
-            async with stdio_client_with_rich_stderr(server_params) as (
+            # Create a stderr handler that logs to our application logger
+            async with stdio_client(server_params, errlog=get_stderr_handler(server_name)) as (
                 read_stream,
                 write_stream,
             ):
@@ -143,7 +152,11 @@ class ServerRegistry:
                 raise ValueError(f"URL is required for SSE transport: {server_name}")
 
             # Use sse_client to get the read and write streams
-            async with sse_client(config.url) as (read_stream, write_stream):
+            async with sse_client(
+                config.url,
+                config.headers,
+                sse_read_timeout=config.read_transport_sse_timeout_seconds,
+            ) as (read_stream, write_stream):
                 session = client_session_factory(
                     read_stream,
                     write_stream,
@@ -190,13 +203,17 @@ class ServerRegistry:
 
         config = self.registry[server_name]
 
-        async with self.start_server(server_name, client_session_factory=client_session_factory) as session:
+        async with self.start_server(
+            server_name, client_session_factory=client_session_factory
+        ) as session:
             try:
                 logger.info(f"{server_name}: Initializing server...")
                 await session.initialize()
                 logger.info(f"{server_name}: Initialized.")
 
-                intialization_callback = init_hook if init_hook is not None else self.init_hooks.get(server_name)
+                intialization_callback = (
+                    init_hook if init_hook is not None else self.init_hooks.get(server_name)
+                )
 
                 if intialization_callback:
                     logger.info(f"{server_name}: Executing init hook")
@@ -247,6 +264,7 @@ class ServerRegistry:
         Returns:
             MCPServerSettings: The server configuration.
         """
+
         server_config = self.registry.get(server_name)
         if server_config is None:
             logger.warning(f"Server '{server_name}' not found in registry.")

@@ -2,6 +2,10 @@ default_model: sonnet
 
 # on windows, adjust the mount point to be the full path e.g. x:/temp/data-analysis/mount-point:/mnt/data/
 
+# logger:
+#   level: "debug"
+#   type: "console"
+
 mcp:
   servers:
     interpreter:
@@ -47,9 +51,16 @@ mcp:
     sizing_setup:
       command: "uv"
       args: ["run", "prompt_sizing1.py"]
+
     category:
-      command: "uv"
-      args: ["run", "prompt_category.py"]
+      command: "prompt-server"
+      args: ["simple.txt"]
+
     mcp_hfspace:
       command: "npx"
       args: ["@llmindset/mcp-hfspace"]
+
+    mcp_webcam:
+      command: "npx"
+      args: ["@llmindset/mcp-webcam"]
+

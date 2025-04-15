@@ -18,7 +18,9 @@ app = FastMCP(name="ImageToolServer", debug=True)
 
 
 @app.tool(name="get_image", description="Returns an image with a descriptive text")
-async def get_image(image_name: str = "default", ctx: Context = None) -> list[TextContent | ImageContent]:
+async def get_image(
+    image_name: str = "default", ctx: Context = None
+) -> list[TextContent | ImageContent]:
     """
     Returns an image file along with a descriptive text.
 

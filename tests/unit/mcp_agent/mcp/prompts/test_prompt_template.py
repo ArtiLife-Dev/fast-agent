@@ -12,11 +12,7 @@ import pytest
 from mcp.types import ImageContent, TextContent
 
 from mcp_agent.mcp import mime_utils, resource_utils
-
-# Import the prompt server modules for testing
-from mcp_agent.mcp.prompts.prompt_server import (
-    create_messages_with_resources,
-)
+from mcp_agent.mcp.prompts.prompt_load import create_messages_with_resources
 from mcp_agent.mcp.prompts.prompt_template import (
     PromptContent,
     PromptMetadata,
@@ -394,7 +390,9 @@ This appears to be a 1x1 pixel test image.
     def test_create_image_content(self):
         """Test creating ImageContent objects"""
         # Test with our sample PNG
-        image_content = resource_utils.create_image_content(data=TINY_IMAGE_PNG, mime_type="image/png")
+        image_content = resource_utils.create_image_content(
+            data=TINY_IMAGE_PNG, mime_type="image/png"
+        )
 
         # Verify structure
         assert isinstance(image_content, ImageContent)
@@ -411,7 +409,9 @@ This appears to be a 1x1 pixel test image.
         assert mime_utils.is_image_mime_type(mime_type) is True
 
         # Load the binary content
-        content, mime_type, is_binary = resource_utils.load_resource_content(str(temp_image_file), prompt_files=[Path(temp_image_file).parent])
+        content, mime_type, is_binary = resource_utils.load_resource_content(
+            str(temp_image_file), prompt_files=[Path(temp_image_file).parent]
+        )
 
         # Verify it's handled as binary
         assert is_binary is True
@@ -444,7 +444,9 @@ This appears to be a 1x1 pixel test image.
         content_sections = template.content_sections
 
         # Create messages with resources
-        messages = create_messages_with_resources(content_sections, prompt_files=[temp_image_prompt_file])
+        messages = create_messages_with_resources(
+            content_sections, prompt_files=[temp_image_prompt_file]
+        )
 
         # We should have 4 messages:
         # 1. User text message
@@ -477,7 +479,9 @@ This appears to be a 1x1 pixel test image.
         # Test a small custom resource handler function that mimics the server's implementation
         async def read_resource(resource_path):
             mime_type = mime_utils.guess_mime_type(str(resource_path))
-            is_binary = mime_utils.is_image_mime_type(mime_type) or not mime_type.startswith("text/")
+            is_binary = mime_utils.is_image_mime_type(mime_type) or not mime_type.startswith(
+                "text/"
+            )
 
             if is_binary:
                 # For binary files, read as binary and base64 encode
@@ -504,7 +508,9 @@ This appears to be a 1x1 pixel test image.
             pytest.fail(f"Resource handler did not return valid base64: {e}")
 
         # Also verify that our direct load_resource_content function produces valid base64
-        content, mime_type, is_binary = resource_utils.load_resource_content(path, prompt_files=[Path(temp_image_file).parent])
+        content, mime_type, is_binary = resource_utils.load_resource_content(
+            path, prompt_files=[Path(temp_image_file).parent]
+        )
 
         # The function should produce the same base64 content
         assert content == file_result

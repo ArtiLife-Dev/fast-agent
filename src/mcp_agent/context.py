@@ -156,7 +156,9 @@ async def configure_executor(config: "Settings"):
         return executor
 
 
-async def initialize_context(config: Optional[Union["Settings", str]] = None, store_globally: bool = False):
+async def initialize_context(
+    config: Optional[Union["Settings", str]] = None, store_globally: bool = False
+):
     """
     Initialize the global application context.
     """
@@ -232,5 +234,7 @@ def get_current_context() -> Context:
 def get_current_config():
     """
     Get the current application config.
+    
+    Returns the context config if available, otherwise falls back to global settings.
     """
     return get_current_context().config or get_settings()

@@ -192,7 +192,7 @@ class LoggingConfig:
         batch_size: int = 100,
         flush_interval: float = 2.0,
         **kwargs: Any,
-    ):
+    ) -> None:
         """
         Configure the logging system.
 
@@ -230,7 +230,7 @@ class LoggingConfig:
         cls._initialized = True
 
     @classmethod
-    async def shutdown(cls):
+    async def shutdown(cls) -> None:
         """Shutdown the logging system gracefully."""
         if not cls._initialized:
             return

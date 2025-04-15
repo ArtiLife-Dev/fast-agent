@@ -40,7 +40,7 @@ class MCPRootSettings(BaseModel):
     @classmethod
     def validate_uri(cls, v: str) -> str:
         """Validate that the URI starts with file:// (required by specification 2024-11-05)"""
-        if not v.startswith("file://"):
+        if v and not v.startswith("file://"):
             raise ValueError("Root URI must start with file://")
         return v
 
@@ -70,19 +70,22 @@ class MCPServerSettings(BaseModel):
     """The arguments for the server command."""
 
     read_timeout_seconds: int | None = None
+    """The timeout in seconds for the session."""
+
+    read_transport_sse_timeout_seconds: int = 300
     """The timeout in seconds for the server connection."""
 
     url: str | None = None
     """The URL for the server (e.g. for SSE transport)."""
+
+    headers: Dict[str, str] | None = None
+    """Headers dictionary for SSE connections"""
 
     auth: MCPServerAuthSettings | None = None
     """The authentication configuration for the server."""
 
     roots: Optional[List[MCPRootSettings]] = None
     """Root directories this server has access to."""
-
-    env: Dict[str, str] | None = None
-    """Environment variables to pass to the server process."""
 
     env: Dict[str, str] | None = None
     """Environment variables to pass to the server process."""
@@ -100,27 +103,19 @@ class MCPSettings(BaseModel):
 
 class AnthropicSettings(BaseModel):
     """
-    Settings for using Anthropic models in the MCP Agent application.
+    Settings for using Anthropic models in the fast-agent application.
     """
 
     api_key: str | None = None
 
-    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
-
-
-class CohereSettings(BaseModel):
-    """
-    Settings for using Cohere models in the MCP Agent application.
-    """
-
-    api_key: str | None = None
+    base_url: str | None = None
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class OpenAISettings(BaseModel):
     """
-    Settings for using OpenAI models in the MCP Agent application.
+    Settings for using OpenAI models in the fast-agent application.
     """
 
     api_key: str | None = None
@@ -131,9 +126,45 @@ class OpenAISettings(BaseModel):
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
+class DeepSeekSettings(BaseModel):
+    """
+    Settings for using OpenAI models in the fast-agent application.
+    """
+
+    api_key: str | None = None
+    # reasoning_effort: Literal["low", "medium", "high"] = "medium"
+
+    base_url: str | None = None
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
+class GenericSettings(BaseModel):
+    """
+    Settings for using OpenAI models in the fast-agent application.
+    """
+
+    api_key: str | None = None
+
+    base_url: str | None = None
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+    
+
+class OpenRouterSettings(BaseModel):
+    """
+    Settings for using OpenRouter models via its OpenAI-compatible API.
+    """
+    api_key: str | None = None
+    
+    base_url: str | None = None # Optional override, defaults handled in provider
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
 class TemporalSettings(BaseModel):
     """
-    Temporal settings for the MCP Agent application.
+    Temporal settings for the fast-agent application.
     """
 
     host: str
@@ -142,27 +173,14 @@ class TemporalSettings(BaseModel):
     api_key: str | None = None
 
 
-class UsageTelemetrySettings(BaseModel):
-    """
-    Settings for usage telemetry in the MCP Agent application.
-    Anonymized usage metrics are sent to a telemetry server to help improve the product.
-    """
-
-    enabled: bool = True
-    """Enable usage telemetry in the MCP Agent application."""
-
-    enable_detailed_telemetry: bool = False
-    """If enabled, detailed telemetry data, including prompts and agents, will be sent to the telemetry server."""
-
-
 class OpenTelemetrySettings(BaseModel):
     """
-    OTEL settings for the MCP Agent application.
+    OTEL settings for the fast-agent application.
     """
 
     enabled: bool = True
 
-    service_name: str = "mcp-agent"
+    service_name: str = "fast-agent"
     service_instance_id: str | None = None
     service_version: str | None = None
 
@@ -178,7 +196,7 @@ class OpenTelemetrySettings(BaseModel):
 
 class LoggerSettings(BaseModel):
     """
-    Logger settings for the MCP Agent application.
+    Logger settings for the fast-agent application.
     """
 
     type: Literal["none", "console", "file", "http"] = "file"
@@ -221,7 +239,7 @@ class LoggerSettings(BaseModel):
 
 class Settings(BaseSettings):
     """
-    Settings class for the MCP Agent application.
+    Settings class for the fast-agent application.
     """
 
     model_config = SettingsConfigDict(
@@ -236,7 +254,7 @@ class Settings(BaseSettings):
     """MCP config, such as MCP servers"""
 
     execution_engine: Literal["asyncio", "temporal"] = "asyncio"
-    """Execution engine for the MCP Agent application"""
+    """Execution engine for the fast-agent application"""
 
     default_model: str | None = "haiku"
     """
@@ -247,22 +265,25 @@ class Settings(BaseSettings):
     """Settings for Temporal workflow orchestration"""
 
     anthropic: AnthropicSettings | None = None
-    """Settings for using Anthropic models in the MCP Agent application"""
-
-    cohere: CohereSettings | None = None
-    """Settings for using Cohere models in the MCP Agent application"""
-
-    openai: OpenAISettings | None = None
-    """Settings for using OpenAI models in the MCP Agent application"""
+    """Settings for using Anthropic models in the fast-agent application"""
 
     otel: OpenTelemetrySettings | None = OpenTelemetrySettings()
-    """OpenTelemetry logging settings for the MCP Agent application"""
+    """OpenTelemetry logging settings for the fast-agent application"""
+
+    openai: OpenAISettings | None = None
+    """Settings for using OpenAI models in the fast-agent application"""
+
+    deepseek: DeepSeekSettings | None = None
+    """Settings for using DeepSeek models in the fast-agent application"""
+
+    openrouter: OpenRouterSettings | None = None
+    """Settings for using OpenRouter models in the fast-agent application"""
+
+    generic: GenericSettings | None = None
+    """Settings for using Generic models in the fast-agent application"""
 
     logger: LoggerSettings | None = LoggerSettings()
-    """Logger settings for the MCP Agent application"""
-
-    usage_telemetry: UsageTelemetrySettings | None = UsageTelemetrySettings()
-    """Usage tracking settings for the MCP Agent application"""
+    """Logger settings for the fast-agent application"""
 
     @classmethod
     def find_config(cls) -> Path | None:
@@ -272,9 +293,9 @@ class Settings(BaseSettings):
         # Check current directory and parent directories
         while current_dir != current_dir.parent:
             for filename in [
+                "fastagent.config.yaml",
                 "mcp-agent.config.yaml",
                 "mcp_agent.config.yaml",
-                "fastagent.config.yaml",
             ]:
                 config_path = current_dir / filename
                 if config_path.exists():
@@ -302,15 +323,33 @@ def get_settings(config_path: str | None = None) -> Settings:
         return merged
 
     global _settings
-    if _settings:
+
+    # If we have a specific config path, always reload settings
+    # This ensures each test gets its own config
+    if config_path:
+        # Reset for the new path
+        _settings = None
+    elif _settings:
+        # Use cached settings only for no specific path
         return _settings
 
-    config_file = Path(config_path) if config_path else Settings.find_config()
+    # Handle config path - convert string to Path if needed
+    if config_path:
+        config_file = Path(config_path)
+        # If it's a relative path and doesn't exist, try finding it
+        if not config_file.is_absolute() and not config_file.exists():
+            # Try resolving against current directory first
+            resolved_path = Path.cwd() / config_file.name
+            if resolved_path.exists():
+                config_file = resolved_path
+    else:
+        config_file = Settings.find_config()
+
     merged_settings = {}
 
     if config_file:
         if not config_file.exists():
-            pass
+            print(f"Warning: Specified config file does not exist: {config_file}")
         else:
             import yaml  # pylint: disable=C0415
 
@@ -322,11 +361,14 @@ def get_settings(config_path: str | None = None) -> Settings:
             # but stop after finding the first one
             current_dir = config_file.parent
             found_secrets = False
+            # Start with the absolute path of the config file's directory
+            current_dir = config_file.parent.resolve()
+
             while current_dir != current_dir.parent and not found_secrets:
                 for secrets_filename in [
+                    "fastagent.secrets.yaml",
                     "mcp-agent.secrets.yaml",
                     "mcp_agent.secrets.yaml",
-                    "fastagent.secrets.yaml",
                 ]:
                     secrets_file = current_dir / secrets_filename
                     if secrets_file.exists():
@@ -336,7 +378,8 @@ def get_settings(config_path: str | None = None) -> Settings:
                             found_secrets = True
                             break
                 if not found_secrets:
-                    current_dir = current_dir.parent
+                    # Get the absolute path of the parent directory
+                    current_dir = current_dir.parent.resolve()
 
             _settings = Settings(**merged_settings)
             return _settings

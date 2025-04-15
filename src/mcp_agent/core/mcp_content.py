@@ -10,12 +10,16 @@ from pathlib import Path
 from typing import Any, List, Literal, Optional, Union
 
 from mcp.types import (
+    Annotations,
     BlobResourceContents,
     EmbeddedResource,
     ImageContent,
+    ReadResourceResult,
+    ResourceContents,
     TextContent,
     TextResourceContents,
 )
+from pydantic import AnyUrl
 
 from mcp_agent.mcp.mime_utils import (
     guess_mime_type,
@@ -23,11 +27,14 @@ from mcp_agent.mcp.mime_utils import (
     is_image_mime_type,
 )
 
+# Type for all MCP content types
+MCPContentType = Union[TextContent, ImageContent, EmbeddedResource, ResourceContents]
+
 
 def MCPText(
     text: str,
     role: Literal["user", "assistant"] = "user",
-    annotations: Optional[dict] = None,
+    annotations: Annotations = None,
 ) -> dict:
     """
     Create a message with text content.
@@ -47,11 +54,11 @@ def MCPText(
 
 
 def MCPImage(
-    path: Union[str, Path] = None,
-    data: bytes = None,
+    path: str | Path | None = None,
+    data: bytes | None = None,
     mime_type: Optional[str] = None,
     role: Literal["user", "assistant"] = "user",
-    annotations: Optional[dict] = None,
+    annotations: Annotations | None = None,
 ) -> dict:
     """
     Create a message with image content.
@@ -86,7 +93,9 @@ def MCPImage(
 
     return {
         "role": role,
-        "content": ImageContent(type="image", data=b64_data, mimeType=mime_type, annotations=annotations),
+        "content": ImageContent(
+            type="image", data=b64_data, mimeType=mime_type, annotations=annotations
+        ),
     }
 
 
@@ -94,7 +103,7 @@ def MCPFile(
     path: Union[str, Path],
     mime_type: Optional[str] = None,
     role: Literal["user", "assistant"] = "user",
-    annotations: Optional[dict] = None,
+    annotations: Annotations | None = None,
 ) -> dict:
     """
     Create a message with an embedded resource from a file.
@@ -122,17 +131,19 @@ def MCPFile(
         binary_data = path.read_bytes()
         b64_data = base64.b64encode(binary_data).decode("ascii")
 
-        resource = BlobResourceContents(uri=uri, blob=b64_data, mimeType=mime_type)
+        resource = BlobResourceContents(uri=AnyUrl(uri), blob=b64_data, mimeType=mime_type)
     else:
         # Read as text
         try:
             text_data = path.read_text(encoding="utf-8")
-            resource = TextResourceContents(uri=uri, text=text_data, mimeType=mime_type)
+            resource = TextResourceContents(uri=AnyUrl(uri), text=text_data, mimeType=mime_type)
         except UnicodeDecodeError:
             # Fallback to binary if text read fails
             binary_data = path.read_bytes()
             b64_data = base64.b64encode(binary_data).decode("ascii")
-            resource = BlobResourceContents(uri=uri, blob=b64_data, mimeType=mime_type or "application/octet-stream")
+            resource = BlobResourceContents(
+                uri=AnyUrl(uri), blob=b64_data, mimeType=mime_type or "application/octet-stream"
+            )
 
     return {
         "role": role,
@@ -140,7 +151,10 @@ def MCPFile(
     }
 
 
-def MCPPrompt(*content_items, role: Literal["user", "assistant"] = "user") -> List[dict]:
+def MCPPrompt(
+    *content_items: Union[dict, str, Path, bytes, MCPContentType, 'EmbeddedResource', 'ReadResourceResult'], 
+    role: Literal["user", "assistant"] = "user"
+) -> List[dict]:
     """
     Create one or more prompt messages with various content types.
 
@@ -150,6 +164,11 @@ def MCPPrompt(*content_items, role: Literal["user", "assistant"] = "user") -> Li
     - File paths with text mime types or other mime types become EmbeddedResource
     - Dicts with role and content are passed through unchanged
     - Raw bytes become ImageContent
+    - TextContent objects are used directly
+    - ImageContent objects are used directly
+    - EmbeddedResource objects are used directly
+    - ResourceContent objects are wrapped in EmbeddedResource
+    - ReadResourceResult objects are expanded into multiple messages
 
     Args:
         *content_items: Content items of various types
@@ -164,10 +183,10 @@ def MCPPrompt(*content_items, role: Literal["user", "assistant"] = "user") -> Li
         if isinstance(item, dict) and "role" in item and "content" in item:
             # Already a fully formed message
             result.append(item)
-        elif isinstance(item, str) and not Path(item).exists():
-            # Simple text content (that's not a file path)
+        elif isinstance(item, str):
+            # Simple text content
             result.append(MCPText(item, role=role))
-        elif isinstance(item, Path) or isinstance(item, str):
+        elif isinstance(item, Path):
             # File path - determine the content type based on mime type
             path_str = str(item)
             mime_type = guess_mime_type(path_str)
@@ -181,6 +200,28 @@ def MCPPrompt(*content_items, role: Literal["user", "assistant"] = "user") -> Li
         elif isinstance(item, bytes):
             # Raw binary data, assume image
             result.append(MCPImage(data=item, role=role))
+        elif isinstance(item, TextContent):
+            # Already a TextContent, wrap in a message
+            result.append({"role": role, "content": item})
+        elif isinstance(item, ImageContent):
+            # Already an ImageContent, wrap in a message
+            result.append({"role": role, "content": item})
+        elif isinstance(item, EmbeddedResource):
+            # Already an EmbeddedResource, wrap in a message
+            result.append({"role": role, "content": item})
+        elif hasattr(item, 'type') and item.type == 'resource' and hasattr(item, 'resource'):
+            # Looks like an EmbeddedResource but may not be the exact class
+            result.append({"role": role, "content": EmbeddedResource(type="resource", resource=item.resource)})
+        elif isinstance(item, ResourceContents):
+            # It's a ResourceContents, wrap it in an EmbeddedResource
+            result.append({"role": role, "content": EmbeddedResource(type="resource", resource=item)})
+        elif isinstance(item, ReadResourceResult):
+            # It's a ReadResourceResult, convert each resource content
+            for resource_content in item.contents:
+                result.append({
+                    "role": role, 
+                    "content": EmbeddedResource(type="resource", resource=resource_content)
+                })
         else:
             # Try to convert to string
             result.append(MCPText(str(item), role=role))
@@ -188,12 +229,12 @@ def MCPPrompt(*content_items, role: Literal["user", "assistant"] = "user") -> Li
     return result
 
 
-def User(*content_items) -> List[dict]:
+def User(*content_items: Union[dict, str, Path, bytes, MCPContentType, 'EmbeddedResource', 'ReadResourceResult']) -> List[dict]:
     """Create user message(s) with various content types."""
     return MCPPrompt(*content_items, role="user")
 
 
-def Assistant(*content_items) -> List[dict]:
+def Assistant(*content_items: Union[dict, str, Path, bytes, MCPContentType, 'EmbeddedResource', 'ReadResourceResult']) -> List[dict]:
     """Create assistant message(s) with various content types."""
     return MCPPrompt(*content_items, role="assistant")
 

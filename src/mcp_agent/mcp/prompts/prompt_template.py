@@ -20,6 +20,12 @@ from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 from mcp_agent.mcp.prompt_serialization import (
     multipart_messages_to_delimited_format,
 )
+from mcp_agent.mcp.prompts.prompt_constants import (
+    ASSISTANT_DELIMITER,
+    DEFAULT_DELIMITER_MAP,
+    RESOURCE_DELIMITER,
+    USER_DELIMITER,
+)
 
 
 class PromptMetadata(BaseModel):
@@ -95,11 +101,7 @@ class PromptTemplate:
         """
         self.template_text = template_text
         self.template_file_path = template_file_path
-        self.delimiter_map = delimiter_map or {
-            "---USER": "user",
-            "---ASSISTANT": "assistant",
-            "---RESOURCE": "resource",
-        }
+        self.delimiter_map = delimiter_map or DEFAULT_DELIMITER_MAP
         self._template_variables = self._extract_template_variables(template_text)
         self._parsed_content = self._parse_template()
 
@@ -120,19 +122,17 @@ class PromptTemplate:
             A new PromptTemplate object
         """
         # Use default delimiter map if none provided
-        delimiter_map = delimiter_map or {
-            "---USER": "user",
-            "---ASSISTANT": "assistant",
-            "---RESOURCE": "resource",
-        }
+        delimiter_map = delimiter_map or DEFAULT_DELIMITER_MAP
 
         # Convert to delimited format
         delimited_content = multipart_messages_to_delimited_format(
             messages,
-            user_delimiter=next((k for k, v in delimiter_map.items() if v == "user"), "---USER"),
+            user_delimiter=next(
+                (k for k, v in delimiter_map.items() if v == "user"), USER_DELIMITER
+            ),
             assistant_delimiter=next(
                 (k for k, v in delimiter_map.items() if v == "assistant"),
-                "---ASSISTANT",
+                ASSISTANT_DELIMITER,
             ),
         )
 
@@ -162,12 +162,12 @@ class PromptTemplate:
         Returns:
             List of PromptContent with substitutions applied
         """
-        result = []
-        for section in self._parsed_content:
-            result.append(section.apply_substitutions(context))
-        return result
+        # Create a new list with substitutions applied to each section
+        return [section.apply_substitutions(context) for section in self._parsed_content]
 
-    def apply_substitutions_to_multipart(self, context: Dict[str, Any]) -> List[PromptMessageMultipart]:
+    def apply_substitutions_to_multipart(
+        self, context: Dict[str, Any]
+    ) -> List[PromptMessageMultipart]:
         """
         Apply variable substitutions to the template and return PromptMessageMultipart objects.
 
@@ -177,9 +177,11 @@ class PromptTemplate:
         Returns:
             List of PromptMessageMultipart objects with substitutions applied
         """
+        # First create a substituted template
         content_sections = self.apply_substitutions(context)
-        multiparts = []
 
+        # Convert content sections to multipart messages
+        multiparts = []
         for section in content_sections:
             # Handle text content
             content_items = [TextContent(type="text", text=section.text)]
@@ -329,11 +331,7 @@ class PromptTemplateLoader:
         Args:
             delimiter_map: Optional map of delimiters to roles
         """
-        self.delimiter_map = delimiter_map or {
-            "---USER": "user",
-            "---ASSISTANT": "assistant",
-            "---RESOURCE": "resource",
-        }
+        self.delimiter_map = delimiter_map or DEFAULT_DELIMITER_MAP
 
     def load_from_file(self, file_path: Path) -> PromptTemplate:
         """
@@ -360,17 +358,8 @@ class PromptTemplateLoader:
         Returns:
             A PromptTemplate object
         """
-        delimited_content = multipart_messages_to_delimited_format(
-            messages,
-            user_delimiter=next((k for k, v in self.delimiter_map.items() if v == "user"), "---USER"),
-            assistant_delimiter=next(
-                (k for k, v in self.delimiter_map.items() if v == "assistant"),
-                "---ASSISTANT",
-            ),
-        )
-
-        content = "\n".join(delimited_content)
-        return PromptTemplate(content, self.delimiter_map)
+        # Use the class method directly to avoid code duplication
+        return PromptTemplate.from_multipart_messages(messages, self.delimiter_map)
 
     def get_metadata(self, file_path: Path) -> PromptMetadata:
         """
@@ -432,7 +421,9 @@ class PromptTemplateLoader:
 
         # Extract resource paths from all sections that come after RESOURCE delimiters
         resource_paths = []
-        resource_delimiter = next((k for k, v in self.delimiter_map.items() if v == "resource"), "---RESOURCE")
+        resource_delimiter = next(
+            (k for k, v in self.delimiter_map.items() if v == "resource"), RESOURCE_DELIMITER
+        )
         for i, line in enumerate(lines):
             if line.strip() == resource_delimiter:
                 if i + 1 < len(lines) and lines[i + 1].strip():

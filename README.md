@@ -2,12 +2,15 @@
 <a href="https://pypi.org/project/fast-agent-mcp/"><img src="https://img.shields.io/pypi/v/fast-agent-mcp?color=%2334D058&label=pypi" /></a>
 <a href="#"><img src="https://github.com/evalstate/fast-agent/actions/workflows/main-checks.yml/badge.svg" /></a>
 <a href="https://github.com/evalstate/fast-agent/issues"><img src="https://img.shields.io/github/issues-raw/evalstate/fast-agent" /></a>
-<a href="https://lmai.link/discord/mcp-agent"><img src="https://shields.io/discord/1089284610329952357" alt="discord" /></a>
+<a href="https://discord.gg/xg5cJ7ndN6"><img src="https://img.shields.io/discord/1358470293990936787" alt="discord" /></a>
 <img alt="Pepy Total Downloads" src="https://img.shields.io/pepy/dt/fast-agent-mcp?label=pypi%20%7C%20downloads"/>
 <a href="https://github.com/evalstate/fast-agent-mcp/blob/main/LICENSE"><img src="https://img.shields.io/pypi/l/fast-agent-mcp" /></a>
 </p>
 
 ## Overview
+
+> [!TIP]
+> Documentation site is in production here : https://fast-agent.ai. Feel free to feed back what's helpful and what's not. llms.txt link is here: https://fast-agent.ai/llms.txt
 
 **`fast-agent`** enables you to create and interact with sophisticated Agents and Workflows in minutes. It is the first framework with complete, end-to-end tested MCP Feature support including Sampling. Both Anthropic (Haiku, Sonnet, Opus) and OpenAI models (gpt-4o family, o1/o3 family) are supported.
 
@@ -15,8 +18,7 @@ The simple declarative syntax lets you concentrate on composing your Prompts and
 
 `fast-agent` is multi-modal, supporting Images and PDFs for both Anthropic and OpenAI endpoints via Prompts, Resources and MCP Tool Call results. The inclusion of passthrough and playback LLMs enable rapid development and test of Python glue-code for your applications.
 
-> [!TIP]
-> `fast-agent` is now MCP Native! Coming Soon - Full Documentation Site and Further MCP Examples.
+> [!TIP] > `fast-agent` is now MCP Native! Coming Soon - Full Documentation Site and Further MCP Examples.
 
 ### Agent Application Development
 
@@ -38,10 +40,10 @@ uv pip install fast-agent-mcp       # install fast-agent!
 fast-agent setup                    # create an example agent and config files
 uv run agent.py                     # run your first agent
 uv run agent.py --model=o3-mini.low # specify a model
-fast-agent bootstrap workflow       # create "building effective agents" examples
+fast-agent quickstart workflow       # create "building effective agents" examples
 ```
 
-Other bootstrap examples include a Researcher Agent (with Evaluator-Optimizer workflow) and Data Analysis Agent (similar to the ChatGPT experience), demonstrating MCP Roots support.
+Other quickstart examples include a Researcher Agent (with Evaluator-Optimizer workflow) and Data Analysis Agent (similar to the ChatGPT experience), demonstrating MCP Roots support.
 
 > [!TIP]
 > Windows Users - there are a couple of configuration changes needed for the Filesystem and Docker MCP Servers - necessary changes are detailed within the configuration files.
@@ -83,7 +85,6 @@ fast = FastAgent("Agent Example")
 @fast.agent(
   instruction="Given an object, respond only with an estimate of its size."
 )
-
 async def main():
   async with fast.run() as agent:
     await agent()
@@ -98,7 +99,7 @@ Specify a model with the `--model` switch - for example `uv run sizer.py --model
 
 ### Combining Agents and using MCP Servers
 
-_To generate examples use `fast-agent bootstrap workflow`. This example can be run with `uv run chaining.py`. fast-agent looks for configuration files in the current directory before checking parent directories recursively._
+_To generate examples use `fast-agent quickstart workflow`. This example can be run with `uv run workflow/chaining.py`. fast-agent looks for configuration files in the current directory before checking parent directories recursively._
 
 Agents can be chained to build a workflow, using MCP Servers defined in the `fastagent.config.yaml` file:
 
@@ -115,12 +116,14 @@ Agents can be chained to build a workflow, using MCP Servers defined in the `fas
     Respond only with the post, never use hashtags.
     """,
 )
-
+@fast.chain(
+    name="post_writer",
+    sequence=["url_fetcher", "social_media"],
+)
 async def main():
     async with fast.run() as agent:
-        await agent.social_media(
-            await agent.url_fetcher("http://llmindset.co.uk/resources/mcp-hfspace/")
-        )
+        # using chain workflow
+        await agent.post_writer("http://llmindset.co.uk")
 ```
 
 All Agents and Workflows respond to `.send("message")` or `.prompt()` to begin a chat session.
@@ -128,7 +131,7 @@ All Agents and Workflows respond to `.send("message")` or `.prompt()` to begin a
 Saved as `social.py` we can now run this workflow from the command line with:
 
 ```bash
-uv run social.py --agent social_media --message "<url>"
+uv run workflow/chaining.py --agent post_writer --message "<url>"
 ```
 
 Add the `--quiet` switch to disable progress and message display and return only the final response - useful for simple automations.
@@ -218,7 +221,7 @@ async with fast.run() as agent:
 
 When used in a workflow, it returns the last `generator` message as the result.
 
-See the `evaluator.py` workflow example, or `fast-agent bootstrap researcher` for a more complete example.
+See the `evaluator.py` workflow example, or `fast-agent quickstart researcher` for a more complete example.
 
 ### Router
 
@@ -279,7 +282,7 @@ agent["greeter"].send("Good Evening!")          # Dictionary access is supported
   servers=["filesystem"],                # list of MCP Servers for the agent
   model="o3-mini.high",                  # specify a model for the agent
   use_history=True,                      # agent maintains chat history
-  request_params={"temperature": 0.7},   # additional parameters for the LLM (or RequestParams())
+  request_params=RequestParams(temperature= 0.7)), # additional parameters for the LLM (or RequestParams())
   human_input=True,                      # agent can request human input
 )
 ```

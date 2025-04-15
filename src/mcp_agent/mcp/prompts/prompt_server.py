@@ -15,84 +15,82 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.prompts.base import (
+    AssistantMessage,
     Message,
+    UserMessage,
 )
 from mcp.server.fastmcp.resources import FileResource
+from mcp.types import PromptMessage
 from pydantic import AnyUrl
 
 from mcp_agent.mcp import mime_utils, resource_utils
+from mcp_agent.mcp.prompts.prompt_constants import (
+    ASSISTANT_DELIMITER as DEFAULT_ASSISTANT_DELIMITER,
+)
+from mcp_agent.mcp.prompts.prompt_constants import (
+    RESOURCE_DELIMITER as DEFAULT_RESOURCE_DELIMITER,
+)
+from mcp_agent.mcp.prompts.prompt_constants import (
+    USER_DELIMITER as DEFAULT_USER_DELIMITER,
+)
 from mcp_agent.mcp.prompts.prompt_load import create_messages_with_resources
 from mcp_agent.mcp.prompts.prompt_template import (
     PromptMetadata,
-    PromptTemplate,
     PromptTemplateLoader,
 )
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger("prompt_server")
 
 # Create FastMCP server
 mcp = FastMCP("Prompt Server")
 
 
+def convert_to_fastmcp_messages(prompt_messages: List[PromptMessage]) -> List[Message]:
+    """
+    Convert PromptMessage objects from prompt_load to FastMCP Message objects.
+    This adapter prevents double-wrapping of messages.
+
+    Args:
+        prompt_messages: List of PromptMessage objects from prompt_load
+
+    Returns:
+        List of FastMCP Message objects
+    """
+    result = []
+
+    for msg in prompt_messages:
+        if msg.role == "user":
+            result.append(UserMessage(content=msg.content))
+        elif msg.role == "assistant":
+            result.append(AssistantMessage(content=msg.content))
+        else:
+            logger.warning(f"Unknown message role: {msg.role}, defaulting to user")
+            result.append(UserMessage(content=msg.content))
+
+    return result
+
+
 class PromptConfig(PromptMetadata):
     """Configuration for the prompt server"""
 
     prompt_files: List[Path] = []
-    user_delimiter: str = "---USER"
-    assistant_delimiter: str = "---ASSISTANT"
-    resource_delimiter: str = "---RESOURCE"
+    user_delimiter: str = DEFAULT_USER_DELIMITER
+    assistant_delimiter: str = DEFAULT_ASSISTANT_DELIMITER
+    resource_delimiter: str = DEFAULT_RESOURCE_DELIMITER
     http_timeout: float = 10.0
     transport: str = "stdio"
     port: int = 8000
 
 
-# Will be initialized with command line args
-config = None
-
 # We'll maintain registries of all exposed resources and prompts
 exposed_resources: Dict[str, Path] = {}
 prompt_registry: Dict[str, PromptMetadata] = {}
 
-# Default delimiter values
-DEFAULT_USER_DELIMITER = "---USER"
-DEFAULT_ASSISTANT_DELIMITER = "---ASSISTANT"
-DEFAULT_RESOURCE_DELIMITER = "---RESOURCE"
-
 
 # Define a single type for prompt handlers to avoid mypy issues
 PromptHandler = Callable[..., Awaitable[List[Message]]]
-
-
-def create_prompt_handler(template: "PromptTemplate", template_vars: List[str], prompt_files: List[Path]) -> PromptHandler:
-    """Create a prompt handler function for the given template"""
-    if template_vars:
-        # With template variables
-        docstring = f"Prompt with template variables: {', '.join(template_vars)}"
-
-        async def prompt_handler(**kwargs: Any) -> List[Message]:
-            # Build context from parameters
-            context = {var: kwargs.get(var) for var in template_vars if var in kwargs and kwargs[var] is not None}
-
-            content_sections = template.apply_substitutions(context)
-
-            # Convert to MCP Message objects, handling resources properly
-            return create_messages_with_resources(content_sections, prompt_files)
-
-    else:
-        # No template variables
-        docstring = "Get a prompt with no variable substitution"
-
-        async def prompt_handler(**kwargs: Any) -> List[Message]:
-            content_sections = template.content_sections
-
-            # Convert to MCP Message objects, handling resources properly
-            return create_messages_with_resources(content_sections, prompt_files)
-
-    # Set the docstring
-    prompt_handler.__doc__ = docstring
-    return prompt_handler
 
 
 # Type for resource handler
@@ -117,7 +115,9 @@ def create_resource_handler(resource_path: Path, mime_type: str) -> ResourceHand
     return get_resource
 
 
-def get_delimiter_config(file_path: Optional[Path] = None) -> Dict[str, Any]:
+def get_delimiter_config(
+    config: Optional[PromptConfig] = None, file_path: Optional[Path] = None
+) -> Dict[str, Any]:
     """Get delimiter configuration, falling back to defaults if config is None"""
     # Set defaults
     config_values = {
@@ -137,13 +137,62 @@ def get_delimiter_config(file_path: Optional[Path] = None) -> Dict[str, Any]:
     return config_values
 
 
-def register_prompt(file_path: Path) -> None:
+def register_prompt(file_path: Path, config: Optional[PromptConfig] = None) -> None:
     """Register a prompt file"""
     try:
-        # Get delimiter configuration
-        config_values = get_delimiter_config(file_path)
+        # Check if it's a JSON file for ultra-minimal path
+        file_str = str(file_path).lower()
+        if file_str.endswith(".json"):
+            # Simple JSON handling - just load and register directly
+            from mcp.server.fastmcp.prompts.base import Prompt, PromptArgument
 
-        # Use our prompt template loader to analyze the file
+            from mcp_agent.mcp.prompts.prompt_load import load_prompt
+
+            # Create metadata with minimal information
+            metadata = PromptMetadata(
+                name=file_path.stem,
+                description=f"JSON prompt: {file_path.stem}",
+                template_variables=set(),
+                resource_paths=[],  # Skip resource handling
+                file_path=file_path,
+            )
+
+            # Ensure unique name
+            prompt_name = metadata.name
+            if prompt_name in prompt_registry:
+                base_name = prompt_name
+                suffix = 1
+                while prompt_name in prompt_registry:
+                    prompt_name = f"{base_name}_{suffix}"
+                    suffix += 1
+                metadata.name = prompt_name
+
+            prompt_registry[metadata.name] = metadata
+
+            # Create a simple handler that directly loads the JSON file each time
+            async def json_prompt_handler():
+                # Load the messages from the JSON file
+                messages = load_prompt(file_path)
+                # Convert to FastMCP format
+                return convert_to_fastmcp_messages(messages)
+
+            # Register directly with MCP
+            prompt = Prompt(
+                name=metadata.name,
+                description=metadata.description,
+                arguments=[],  # No arguments for JSON prompts
+                fn=json_prompt_handler,
+            )
+            mcp._prompt_manager.add_prompt(prompt)
+
+            logger.info(f"Registered JSON prompt: {metadata.name} ({file_path})")
+            return  # Early return - we're done with JSON files
+
+        # For non-JSON files, continue with the standard approach
+        # Get delimiter configuration
+        config_values = get_delimiter_config(config, file_path)
+
+        # Use standard template loader for text files
         loader = PromptTemplateLoader(
             {
                 config_values["user_delimiter"]: "user",
@@ -171,8 +220,61 @@ def register_prompt(file_path: Path) -> None:
 
         # Create and register prompt handler
         template_vars = list(metadata.template_variables)
-        handler = create_prompt_handler(template, template_vars, config_values["prompt_files"])
-        mcp.prompt(name=metadata.name, description=metadata.description)(handler)
+
+        from mcp.server.fastmcp.prompts.base import Prompt, PromptArgument
+
+        # For prompts with variables, create arguments list for FastMCP
+        if template_vars:
+            # Create a function with properly typed parameters
+            async def template_handler_with_vars(**kwargs):
+                # Extract template variables from kwargs
+                context = {var: kwargs.get(var) for var in template_vars if var in kwargs}
+
+                # Check for missing variables
+                missing_vars = [var for var in template_vars if var not in context]
+                if missing_vars:
+                    raise ValueError(
+                        f"Missing required template variables: {', '.join(missing_vars)}"
+                    )
+
+                # Apply template and create messages
+                content_sections = template.apply_substitutions(context)
+                prompt_messages = create_messages_with_resources(
+                    content_sections, config_values["prompt_files"]
+                )
+                return convert_to_fastmcp_messages(prompt_messages)
+
+            # Create a Prompt directly
+            arguments = [
+                PromptArgument(name=var, description=f"Template variable: {var}", required=True)
+                for var in template_vars
+            ]
+
+            # Create and add the prompt directly to the prompt manager
+            prompt = Prompt(
+                name=metadata.name,
+                description=metadata.description,
+                arguments=arguments,
+                fn=template_handler_with_vars,
+            )
+            mcp._prompt_manager.add_prompt(prompt)
+        else:
+            # Create a simple prompt without variables
+            async def template_handler_without_vars() -> list[Message]:
+                content_sections = template.content_sections
+                prompt_messages = create_messages_with_resources(
+                    content_sections, config_values["prompt_files"]
+                )
+                return convert_to_fastmcp_messages(prompt_messages)
+
+            # Create a Prompt object directly instead of using the decorator
+            prompt = Prompt(
+                name=metadata.name,
+                description=metadata.description,
+                arguments=[],
+                fn=template_handler_without_vars,
+            )
+            mcp._prompt_manager.add_prompt(prompt)
 
         # Register any referenced resources in the prompt
         for resource_path in metadata.resource_paths:
@@ -242,12 +344,46 @@ def parse_args():
         default=8000,
         help="Port to use for SSE transport (default: 8000)",
     )
-    parser.add_argument("--test", type=str, help="Test a specific prompt without starting the server")
+    parser.add_argument(
+        "--test", type=str, help="Test a specific prompt without starting the server"
+    )
 
     return parser.parse_args()
 
 
-async def register_file_resource_handler() -> None:
+def initialize_config(args) -> PromptConfig:
+    """Initialize configuration from command line arguments"""
+    # Resolve file paths
+    prompt_files = []
+    for file_path in args.prompt_files:
+        path = Path(file_path)
+        if not path.exists():
+            logger.warning(f"File not found: {path}")
+            continue
+        prompt_files.append(path.resolve())
+
+    if not prompt_files:
+        logger.error("No valid prompt files specified")
+        raise ValueError("No valid prompt files specified")
+
+    # Initialize configuration
+    return PromptConfig(
+        name="prompt_server",
+        description="FastMCP Prompt Server",
+        template_variables=set(),
+        resource_paths=[],
+        file_path=Path(__file__),
+        prompt_files=prompt_files,
+        user_delimiter=args.user_delimiter,
+        assistant_delimiter=args.assistant_delimiter,
+        resource_delimiter=args.resource_delimiter,
+        http_timeout=args.http_timeout,
+        transport=args.transport,
+        port=args.port,
+    )
+
+
+async def register_file_resource_handler(config: PromptConfig) -> None:
     """Register the general file resource handler"""
 
     @mcp.resource("file://{path}")
@@ -279,14 +415,14 @@ async def register_file_resource_handler() -> None:
             raise
 
 
-async def test_prompt(prompt_name: str) -> int:
+async def test_prompt(prompt_name: str, config: PromptConfig) -> int:
     """Test a prompt and print its details"""
     if prompt_name not in prompt_registry:
         logger.error(f"Test prompt not found: {prompt_name}")
         return 1
 
     # Get delimiter configuration with reasonable defaults
-    config_values = get_delimiter_config()
+    config_values = get_delimiter_config(config)
 
     metadata = prompt_registry[prompt_name]
     print(f"\nTesting prompt: {prompt_name}")
@@ -326,64 +462,44 @@ async def test_prompt(prompt_name: str) -> int:
     return 0
 
 
-async def async_main():
+async def async_main() -> int:
     """Run the FastMCP server (async version)"""
-    global config
-
     # Parse command line arguments
     args = parse_args()
 
-    # Resolve file paths
-    prompt_files = []
-    for file_path in args.prompt_files:
-        path = Path(file_path)
-        if not path.exists():
-            logger.warning(f"File not found: {path}")
-            continue
-        prompt_files.append(path.resolve())
-
-    if not prompt_files:
-        logger.error("No valid prompt files specified")
+    try:
+        # Initialize configuration
+        config = initialize_config(args)
+    except ValueError as e:
+        logger.error(str(e))
         return 1
 
-    # Initialize configuration
-    config = PromptConfig(
-        name="prompt_server",
-        description="FastMCP Prompt Server",
-        template_variables=set(),
-        resource_paths=[],
-        file_path=Path(__file__),
-        prompt_files=prompt_files,
-        user_delimiter=args.user_delimiter,
-        assistant_delimiter=args.assistant_delimiter,
-        resource_delimiter=args.resource_delimiter,
-        http_timeout=args.http_timeout,
-        transport=args.transport,
-        port=args.port,
-    )
-
     # Register resource handlers
-    await register_file_resource_handler()
+    await register_file_resource_handler(config)
 
     # Register all prompts
     for file_path in config.prompt_files:
-        register_prompt(file_path)
+        register_prompt(file_path, config)
 
     # Print startup info
     logger.info("Starting prompt server")
     logger.info(f"Registered {len(prompt_registry)} prompts")
     logger.info(f"Registered {len(exposed_resources)} resources")
-    logger.info(f"Using delimiters: {config.user_delimiter}, {config.assistant_delimiter}, {config.resource_delimiter}")
+    logger.info(
+        f"Using delimiters: {config.user_delimiter}, {config.assistant_delimiter}, {config.resource_delimiter}"
+    )
 
     # If a test prompt was specified, print it and exit
     if args.test:
-        return await test_prompt(args.test)
+        return await test_prompt(args.test, config)
 
     # Start the server with the specified transport
     if config.transport == "stdio":
         await mcp.run_stdio_async()
     else:  # sse
-        await mcp.run_sse_async(port=config.port)
+        # TODO update to 2025-03-26 specification and test config.
+        await mcp.run_sse_async()
+    return 0
 
 
 def main() -> int:

@@ -86,7 +86,7 @@ async def test_agent_multiturn_prompt(fast_agent, model_name):
     )
     async def agent_function():
         async with fast.run() as agent:
-            response = await agent.apply_prompt("multiturn")
+            response = await agent.agent.apply_prompt("multiturn")
             assert "testcaseok" in response.lower()
 
     await agent_function()

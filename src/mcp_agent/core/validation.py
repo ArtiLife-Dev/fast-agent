@@ -10,7 +10,7 @@ from mcp_agent.core.exceptions import (
     CircularDependencyError,
     ServerConfigError,
 )
-from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
+from mcp_agent.llm.augmented_llm import AugmentedLLM
 
 
 def validate_server_references(context, agents: Dict[str, Dict[str, Any]]) -> None:
@@ -56,7 +56,7 @@ def validate_workflow_references(agents: Dict[str, Dict[str, Any]]) -> None:
         if agent_type == AgentType.PARALLEL.value:
             # Check fan_in exists
             fan_in = agent_data["fan_in"]
-            if fan_in not in available_components:
+            if fan_in and fan_in not in available_components:
                 raise AgentConfigError(
                     f"Parallel workflow '{name}' references non-existent fan_in component: {fan_in}"
                 )
@@ -106,7 +106,7 @@ def validate_workflow_references(agents: Dict[str, Dict[str, Any]]) -> None:
 
         elif agent_type == AgentType.ROUTER.value:
             # Check all referenced agents exist
-            router_agents = agent_data["agents"]
+            router_agents = agent_data["router_agents"]
             missing = [a for a in router_agents if a not in available_components]
             if missing:
                 raise AgentConfigError(
@@ -187,7 +187,7 @@ def get_dependencies(
             deps.extend(get_dependencies(fan_out, agents, visited, path, agent_type))
     elif config["type"] == AgentType.CHAIN.value:
         # Get dependencies from sequence agents
-        sequence = config.get("sequence", config.get("agents", []))
+        sequence = config.get("sequence", config.get("router_agents", []))
         for agent_name in sequence:
             deps.extend(get_dependencies(agent_name, agents, visited, path, agent_type))
 
@@ -199,23 +199,96 @@ def get_dependencies(
     return deps
 
 
-def get_parallel_dependencies(
-    name: str, agents: Dict[str, Dict[str, Any]], visited: set, path: set
-) -> List[str]:
+def get_dependencies_groups(
+    agents_dict: Dict[str, Dict[str, Any]], allow_cycles: bool = False
+) -> List[List[str]]:
     """
-    Get dependencies for a parallel agent in topological order.
-    Legacy function that calls the more general get_dependencies.
+    Get dependencies between agents and group them into dependency layers.
+    Each layer can be initialized in parallel.
 
     Args:
-        name: Name of the parallel agent
-        agents: Dictionary of agent configurations
-        visited: Set of already visited agents
-        path: Current path for cycle detection
+        agents_dict: Dictionary of agent configurations
+        allow_cycles: Whether to allow cyclic dependencies
 
     Returns:
-        List of agent names in dependency order
+        List of lists, where each inner list is a group of agents that can be initialized together
 
     Raises:
-        CircularDependencyError: If circular dependency detected
+        CircularDependencyError: If circular dependency detected and allow_cycles is False
     """
-    return get_dependencies(name, agents, visited, path, AgentType.PARALLEL)
+    # Get all agent names
+    agent_names = list(agents_dict.keys())
+
+    # Dictionary to store dependencies for each agent
+    dependencies = {name: set() for name in agent_names}
+
+    # Build the dependency graph
+    for name, agent_data in agents_dict.items():
+        agent_type = agent_data["type"]
+
+        if agent_type == AgentType.PARALLEL.value:
+            # Parallel agents depend on their fan-out and fan-in agents
+            dependencies[name].update(agent_data.get("parallel_agents", []))
+        elif agent_type == AgentType.CHAIN.value:
+            # Chain agents depend on the agents in their sequence
+            dependencies[name].update(agent_data.get("sequence", []))
+        elif agent_type == AgentType.ROUTER.value:
+            # Router agents depend on the agents they route to
+            dependencies[name].update(agent_data.get("router_agents", []))
+        elif agent_type == AgentType.ORCHESTRATOR.value:
+            # Orchestrator agents depend on their child agents
+            dependencies[name].update(agent_data.get("child_agents", []))
+        elif agent_type == AgentType.EVALUATOR_OPTIMIZER.value:
+            # Evaluator-Optimizer agents depend on their evaluation and optimization agents
+            dependencies[name].update(agent_data.get("eval_optimizer_agents", []))
+
+    # Check for cycles if not allowed
+    if not allow_cycles:
+        visited = set()
+        path = set()
+
+        def visit(node) -> None:
+            if node in path:
+                path_str = " -> ".join(path) + " -> " + node
+                raise CircularDependencyError(f"Circular dependency detected: {path_str}")
+            if node in visited:
+                return
+
+            path.add(node)
+            for dep in dependencies[node]:
+                if dep in agent_names:  # Skip dependencies to non-existent agents
+                    visit(dep)
+            path.remove(node)
+            visited.add(node)
+
+        # Check each node
+        for name in agent_names:
+            if name not in visited:
+                visit(name)
+
+    # Group agents by dependency level
+    result = []
+    remaining = set(agent_names)
+
+    while remaining:
+        # Find all agents that have no remaining dependencies
+        current_level = set()
+        for name in remaining:
+            if not dependencies[name] & remaining:  # If no dependencies in remaining agents
+                current_level.add(name)
+
+        if not current_level:
+            if allow_cycles:
+                # If cycles are allowed, just add one remaining node to break the cycle
+                current_level.add(next(iter(remaining)))
+            else:
+                # This should not happen if we checked for cycles
+                raise CircularDependencyError("Unresolvable dependency cycle detected")
+
+        # Add the current level to the result
+        result.append(list(current_level))
+
+        # Remove current level from remaining
+        remaining -= current_level
+
+    return result

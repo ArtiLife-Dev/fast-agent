@@ -30,7 +30,9 @@ async def console_input_callback(request: HumanInputRequest) -> HumanInputRespon
     )
 
     # Extract agent name from metadata dictionary
-    agent_name = request.metadata.get("agent_name", "Unknown Agent") if request.metadata else "Unknown Agent"
+    agent_name = (
+        request.metadata.get("agent_name", "Unknown Agent") if request.metadata else "Unknown Agent"
+    )
 
     # Use the context manager to pause the progress display while getting input
     with progress_display.paused():

@@ -2,7 +2,7 @@
   "$defs": {
     "AnthropicSettings": {
       "additionalProperties": true,
-      "description": "Settings for using Anthropic models in the MCP Agent application.",
+      "description": "Settings for using Anthropic models in the fast-agent application.",
       "properties": {
         "api_key": {
           "anyOf": [
@@ -15,14 +15,26 @@
           ],
           "default": null,
           "title": "Api Key"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
         }
       },
       "title": "AnthropicSettings",
       "type": "object"
     },
-    "CohereSettings": {
+    "DeepSeekSettings": {
       "additionalProperties": true,
-      "description": "Settings for using Cohere models in the MCP Agent application.",
+      "description": "Settings for using OpenAI models in the fast-agent application.",
       "properties": {
         "api_key": {
           "anyOf": [
@@ -35,13 +47,57 @@
           ],
           "default": null,
           "title": "Api Key"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
         }
       },
-      "title": "CohereSettings",
+      "title": "DeepSeekSettings",
+      "type": "object"
+    },
+    "GenericSettings": {
+      "additionalProperties": true,
+      "description": "Settings for using OpenAI models in the fast-agent application.",
+      "properties": {
+        "api_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
+        }
+      },
+      "title": "GenericSettings",
       "type": "object"
     },
     "LoggerSettings": {
-      "description": "Logger settings for the MCP Agent application.",
+      "description": "Logger settings for the fast-agent application.",
       "properties": {
         "type": {
           "default": "file",
@@ -306,6 +362,19 @@
           ],
           "default": null,
           "title": "Read Timeout Seconds",
+          "description": "The timeout in seconds for the session."
+        },
+        "read_transport_sse_timeout_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 300,
+          "title": "Read Transport SSE Timeout Seconds",
           "description": "The timeout in seconds for the server connection."
         },
         "url": {
@@ -320,6 +389,22 @@
           "default": null,
           "title": "Url",
           "description": "The URL for the server (e.g. for SSE transport)."
+        },
+        "headers": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Headers",
+          "description": "Headers dictionary for SSE connections"
         },
         "auth": {
           "anyOf": [
@@ -399,7 +484,7 @@
     },
     "OpenAISettings": {
       "additionalProperties": true,
-      "description": "Settings for using OpenAI models in the MCP Agent application.",
+      "description": "Settings for using OpenAI models in the fast-agent application.",
       "properties": {
         "api_key": {
           "anyOf": [
@@ -440,7 +525,7 @@
       "type": "object"
     },
     "OpenTelemetrySettings": {
-      "description": "OTEL settings for the MCP Agent application.",
+      "description": "OTEL settings for the fast-agent application.",
       "properties": {
         "enabled": {
           "default": true,
@@ -448,7 +533,7 @@
           "type": "boolean"
         },
         "service_name": {
-          "default": "mcp-agent",
+          "default": "fast-agent",
           "title": "Service Name",
           "type": "string"
         },
@@ -506,7 +591,7 @@
       "type": "object"
     },
     "TemporalSettings": {
-      "description": "Temporal settings for the MCP Agent application.",
+      "description": "Temporal settings for the fast-agent application.",
       "properties": {
         "host": {
           "title": "Host",
@@ -540,25 +625,6 @@
       ],
       "title": "TemporalSettings",
       "type": "object"
-    },
-    "UsageTelemetrySettings": {
-      "description": "Settings for usage telemetry in the MCP Agent application.\nAnonymized usage metrics are sent to a telemetry server to help improve the product.",
-      "properties": {
-        "enabled": {
-          "default": true,
-          "title": "Enabled",
-          "type": "boolean",
-          "description": "Enable usage telemetry in the MCP Agent application."
-        },
-        "enable_detailed_telemetry": {
-          "default": false,
-          "title": "Enable Detailed Telemetry",
-          "type": "boolean",
-          "description": "If enabled, detailed telemetry data, including prompts and agents, will be sent to the telemetry server."
-        }
-      },
-      "title": "UsageTelemetrySettings",
-      "type": "object"
     }
   },
   "additionalProperties": true,
@@ -586,7 +652,7 @@
       ],
       "title": "Execution Engine",
       "type": "string",
-      "description": "Execution engine for the MCP Agent application"
+      "description": "Execution engine for the fast-agent application"
     },
     "default_model": {
       "anyOf": [
@@ -622,31 +688,7 @@
         }
       ],
       "default": null,
-      "description": "Settings for using Anthropic models in the MCP Agent application"
-    },
-    "cohere": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/CohereSettings"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "description": "Settings for using Cohere models in the MCP Agent application"
-    },
-    "openai": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/OpenAISettings"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "description": "Settings for using OpenAI models in the MCP Agent application"
+      "description": "Settings for using Anthropic models in the fast-agent application"
     },
     "otel": {
       "anyOf": [
@@ -659,14 +701,50 @@
       ],
       "default": {
         "enabled": true,
-        "service_name": "mcp-agent",
+        "service_name": "fast-agent",
         "service_instance_id": null,
         "service_version": null,
         "otlp_endpoint": null,
         "console_debug": false,
         "sample_rate": 1.0
       },
-      "description": "OpenTelemetry logging settings for the MCP Agent application"
+      "description": "OpenTelemetry logging settings for the fast-agent application"
+    },
+    "openai": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OpenAISettings"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Settings for using OpenAI models in the fast-agent application"
+    },
+    "deepseek": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DeepSeekSettings"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Settings for using DeepSeek models in the fast-agent application"
+    },
+    "generic": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GenericSettings"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Settings for using Generic models in the fast-agent application"
     },
     "logger": {
       "anyOf": [
@@ -692,22 +770,7 @@
         "show_tools": true,
         "truncate_tools": true
       },
-      "description": "Logger settings for the MCP Agent application"
-    },
-    "usage_telemetry": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/UsageTelemetrySettings"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": {
-        "enabled": true,
-        "enable_detailed_telemetry": false
-      },
-      "description": "Usage tracking settings for the MCP Agent application"
+      "description": "Logger settings for the fast-agent application"
     }
   },
   "title": "MCP Agent Configuration Schema",

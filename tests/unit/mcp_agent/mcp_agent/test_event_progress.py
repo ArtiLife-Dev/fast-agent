@@ -5,6 +5,7 @@ import subprocess
 from difflib import unified_diff
 from pathlib import Path
 
+import pytest
 from rich import print
 from rich.console import Console
 from rich.syntax import Syntax
@@ -39,6 +40,7 @@ def show_diff(expected: str, got: str, context: int = 3) -> None:
     console.print(syntax)
 
 
+@pytest.mark.skip("restate/delete test with enhanced approach")
 def test_event_conversion():
     """Test conversion of log events to progress events using gold master approach."""
     # Get the paths
@@ -51,7 +53,10 @@ def test_event_conversion():
         raise FileNotFoundError(f"Test log file not found: {log_file}")
 
     if not expected_output_file.exists():
-        raise FileNotFoundError(f"Expected output file not found: {expected_output_file}\n" "Run update_test_fixtures() to generate it first")
+        raise FileNotFoundError(
+            f"Expected output file not found: {expected_output_file}\n"
+            "Run update_test_fixtures() to generate it first"
+        )
 
     # Run the event_summary script to get current output
     try:

@@ -109,9 +109,17 @@ class ConsoleDisplay:
                     tool_call_name = display_tool["name"]
             else:
                 # Handle potential object format (e.g., Pydantic models)
-                tool_call_name = display_tool.function.name if hasattr(display_tool, "function") else display_tool.name
+                tool_call_name = (
+                    display_tool.function.name
+                    if hasattr(display_tool, "function")
+                    else display_tool.name
+                )
 
-            parts = tool_call_name.split(SEP) if SEP in tool_call_name else [tool_call_name, tool_call_name]
+            parts = (
+                tool_call_name.split(SEP)
+                if SEP in tool_call_name
+                else [tool_call_name, tool_call_name]
+            )
 
             if selected_tool_name.split(SEP)[0] == parts[0]:
                 style = "magenta" if tool_call_name == selected_tool_name else "dim white"
@@ -138,11 +146,17 @@ class ConsoleDisplay:
             # Add human input tool if available
             tools = await aggregator.list_tools()
             if any(tool.name == HUMAN_INPUT_TOOL_NAME for tool in tools.tools):
-                style = "green" if highlight_namespaced_tool == HUMAN_INPUT_TOOL_NAME else "dim white"
+                style = (
+                    "green" if highlight_namespaced_tool == HUMAN_INPUT_TOOL_NAME else "dim white"
+                )
                 display_server_list.append("[human] ", style)
 
             # Add all available servers
-            mcp_server_name = highlight_namespaced_tool.split(SEP)[0] if SEP in highlight_namespaced_tool else highlight_namespaced_tool
+            mcp_server_name = (
+                highlight_namespaced_tool.split(SEP)[0]
+                if SEP in highlight_namespaced_tool
+                else highlight_namespaced_tool
+            )
 
             for server_name in await aggregator.list_servers():
                 style = "green" if server_name == mcp_server_name else "dim white"
@@ -161,10 +175,16 @@ class ConsoleDisplay:
         console.console.print(panel)
         console.console.print("\n")
 
-    def show_user_message(self, message, model: Optional[str], chat_turn: int, name: Optional[str] = None) -> None:
+    def show_user_message(
+        self, message, model: Optional[str], chat_turn: int, name: Optional[str] = None
+    ) -> None:
         """Display a user message in a formatted panel."""
         if not self.config or not self.config.logger.show_chat:
             return
+
+        subtitle_text = Text(f"{model or 'unknown'}", style="dim white")
+        if chat_turn > 0:
+            subtitle_text.append(f" turn {chat_turn}", style="dim white")
 
         panel = Panel(
             message,
@@ -173,7 +193,7 @@ class ConsoleDisplay:
             style="blue",
             border_style="bold white",
             padding=(1, 2),
-            subtitle=Text(f"{model or 'unknown'} turn {chat_turn}", style="dim white"),
+            subtitle=subtitle_text,
             subtitle_align="left",
         )
         console.console.print(panel)

@@ -43,7 +43,9 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
 
     async def wait_for_signal(self, signal, timeout_seconds=None) -> SignalValueT:
         if not workflow._Runtime.current():
-            raise RuntimeError("TemporalSignalHandler.wait_for_signal must be called from within a workflow")
+            raise RuntimeError(
+                "TemporalSignalHandler.wait_for_signal must be called from within a workflow"
+            )
 
         unique_signal_name = f"{signal.name}_{uuid.uuid4()}"
         registration = SignalRegistration(
@@ -77,13 +79,19 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
             async with self._lock:
                 # Remove ourselves from _pending_signals
                 if signal.name in self._pending_signals:
-                    self._pending_signals[signal.name] = [sr for sr in self._pending_signals[signal.name] if sr.unique_name != unique_signal_name]
+                    self._pending_signals[signal.name] = [
+                        sr
+                        for sr in self._pending_signals[signal.name]
+                        if sr.unique_name != unique_signal_name
+                    ]
                     if not self._pending_signals[signal.name]:
                         del self._pending_signals[signal.name]
 
                 # Remove ourselves from _handlers
                 if signal.name in self._handlers:
-                    self._handlers[signal.name] = [h for h in self._handlers[signal.name] if h[0] != unique_signal_name]
+                    self._handlers[signal.name] = [
+                        h for h in self._handlers[signal.name] if h[0] != unique_signal_name
+                    ]
                     if not self._handlers[signal.name]:
                         del self._handlers[signal.name]
 
@@ -128,7 +136,9 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
                     registration = pending_signal.registration
                     if registration.workflow_id == signal.workflow_id:
                         # Only signal for registrations of that workflow
-                        signal_tasks.append(workflow_handle.signal(registration.unique_name, signal.payload))
+                        signal_tasks.append(
+                            workflow_handle.signal(registration.unique_name, signal.payload)
+                        )
                     else:
                         continue
 
@@ -143,7 +153,9 @@ class TemporalSignalHandler(BaseSignalHandler[SignalValueT]):
         super().validate_signal(signal)
         # Add TemporalSignalHandler-specific validation
         if signal.workflow_id is None:
-            raise ValueError("No workflow_id provided on Signal. That is required for Temporal signals")
+            raise ValueError(
+                "No workflow_id provided on Signal. That is required for Temporal signals"
+            )
 
 
 class TemporalExecutorConfig(ExecutorConfig, TemporalSettings):
@@ -171,7 +183,9 @@ class TemporalExecutor(Executor):
             context=context,
             **kwargs,
         )
-        self.config: TemporalExecutorConfig = config or self.context.config.temporal or TemporalExecutorConfig()
+        self.config: TemporalExecutorConfig = (
+            config or self.context.config.temporal or TemporalExecutorConfig()
+        )
         self.client = client
         self._worker = None
         self._activity_semaphore = None
@@ -204,7 +218,9 @@ class TemporalExecutor(Executor):
 
         return wrapped_activity
 
-    async def _execute_task_as_async(self, task: Callable[..., R] | Coroutine[Any, Any, R], **kwargs: Any) -> R | BaseException:
+    async def _execute_task_as_async(
+        self, task: Callable[..., R] | Coroutine[Any, Any, R], **kwargs: Any
+    ) -> R | BaseException:
         async def run_task(task: Callable[..., R] | Coroutine[Any, Any, R]) -> R:
             try:
                 if asyncio.iscoroutine(task):
@@ -237,7 +253,9 @@ class TemporalExecutor(Executor):
         else:
             return await run_task(task)
 
-    async def _execute_task(self, task: Callable[..., R] | Coroutine[Any, Any, R], **kwargs: Any) -> R | BaseException:
+    async def _execute_task(
+        self, task: Callable[..., R] | Coroutine[Any, Any, R], **kwargs: Any
+    ) -> R | BaseException:
         func = task.func if isinstance(task, functools.partial) else task
         is_workflow_task = getattr(func, "is_workflow_task", False)
         if not is_workflow_task:
@@ -250,7 +268,9 @@ class TemporalExecutor(Executor):
         if not activity_name:
             activity_name = f"{func.__module__}.{func.__qualname__}"
 
-        schedule_to_close = execution_metadata.get("schedule_to_close_timeout", self.config.timeout_seconds)
+        schedule_to_close = execution_metadata.get(
+            "schedule_to_close_timeout", self.config.timeout_seconds
+        )
 
         retry_policy = execution_metadata.get("retry_policy", None)
 
@@ -296,7 +316,9 @@ class TemporalExecutor(Executor):
         **kwargs: Any,
     ) -> AsyncIterator[R | BaseException]:
         if not workflow._Runtime.current():
-            raise RuntimeError("TemporalExecutor.execute_streaming must be called from within a workflow")
+            raise RuntimeError(
+                "TemporalExecutor.execute_streaming must be called from within a workflow"
+            )
 
         # TODO: saqadri - validate if async with self.execution_context() is needed here
         async with self.execution_context():
@@ -354,6 +376,8 @@ class TemporalExecutor(Executor):
                 activities=activities,
                 workflows=[],  # We'll auto-load by Python scanning or let the user specify
             )
-            print(f"Starting Temporal Worker on task queue '{self.config.task_queue}' with {len(activities)} activities.")
+            print(
+                f"Starting Temporal Worker on task queue '{self.config.task_queue}' with {len(activities)} activities."
+            )
 
         await self._worker.run()

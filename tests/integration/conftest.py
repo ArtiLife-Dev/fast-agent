@@ -35,23 +35,6 @@ def project_root():
     return Path(__file__).parent.parent.parent
 
 
-# Fixture to set the current working directory for tests
-@pytest.fixture
-def set_cwd(project_root):
-    """Change to the project root directory during tests"""
-    # Save the original working directory
-    original_cwd = os.getcwd()
-
-    # Change to the project root directory
-    os.chdir(project_root)
-
-    # Run the test
-    yield
-
-    # Restore the original working directory
-    os.chdir(original_cwd)
-
-
 # Add a fixture that uses the test file's directory
 @pytest.fixture
 def fast_agent(request):
@@ -69,10 +52,13 @@ def fast_agent(request):
     # Change to the test file's directory
     os.chdir(test_dir)
 
-    # Create agent with local config
+    # Explicitly create absolute path to the config file in the test directory
+    config_file = os.path.join(test_dir, "fastagent.config.yaml")
+    
+    # Create agent with local config using absolute path
     agent = FastAgent(
         "Test Agent",
-        config_path="fastagent.config.yaml",  # Uses local config in test directory
+        config_path=config_file,  # Use absolute path to local config in test directory
         ignore_unknown_args=True,
     )
 

@@ -2,14 +2,15 @@
 Prompt class for easily creating and working with MCP prompt content.
 """
 
-from typing import List, Literal
+from pathlib import Path
+from typing import List, Literal, Union
 
 from mcp.types import PromptMessage
 
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 
 # Import our content helper functions
-from .mcp_content import Assistant, MCPPrompt, User
+from .mcp_content import Assistant, MCPContentType, MCPPrompt, User
 
 
 class Prompt:
@@ -25,49 +26,114 @@ class Prompt:
     - Strings become TextContent
     - Image file paths become ImageContent
     - Other file paths become EmbeddedResource
+    - TextContent objects are used directly
+    - ImageContent objects are used directly
+    - EmbeddedResource objects are used directly 
     - Pre-formatted messages pass through unchanged
     """
 
     @classmethod
-    def user(cls, *content_items) -> PromptMessageMultipart:
+    def user(cls, *content_items: Union[str, Path, bytes, dict, MCPContentType, PromptMessage, PromptMessageMultipart]) -> PromptMessageMultipart:
         """
         Create a user PromptMessageMultipart with various content items.
 
         Args:
-            *content_items: Content items (strings, file paths, etc.)
+            *content_items: Content items in various formats:
+                - Strings: Converted to TextContent
+                - Path objects: Converted based on file type (image/text/binary)
+                - Bytes: Treated as image data
+                - Dicts with role/content: Content extracted
+                - TextContent: Used directly
+                - ImageContent: Used directly
+                - EmbeddedResource: Used directly
+                - PromptMessage: Content extracted
+                - PromptMessageMultipart: Content extracted with role changed to user
 
         Returns:
             A PromptMessageMultipart with user role and the specified content
         """
+        # Handle PromptMessage and PromptMessageMultipart directly
+        if len(content_items) == 1:
+            item = content_items[0]
+            if isinstance(item, PromptMessage):
+                return PromptMessageMultipart(role="user", content=[item.content])
+            elif isinstance(item, PromptMessageMultipart):
+                # Keep the content but change role to user
+                return PromptMessageMultipart(role="user", content=item.content)
+                
+        # Use the original implementation for other types
         messages = User(*content_items)
         return PromptMessageMultipart(role="user", content=[msg["content"] for msg in messages])
 
     @classmethod
-    def assistant(cls, *content_items) -> PromptMessageMultipart:
+    def assistant(cls, *content_items: Union[str, Path, bytes, dict, MCPContentType, PromptMessage, PromptMessageMultipart]) -> PromptMessageMultipart:
         """
         Create an assistant PromptMessageMultipart with various content items.
 
         Args:
-            *content_items: Content items (strings, file paths, etc.)
+            *content_items: Content items in various formats:
+                - Strings: Converted to TextContent
+                - Path objects: Converted based on file type (image/text/binary)
+                - Bytes: Treated as image data
+                - Dicts with role/content: Content extracted
+                - TextContent: Used directly
+                - ImageContent: Used directly
+                - EmbeddedResource: Used directly
+                - PromptMessage: Content extracted
+                - PromptMessageMultipart: Content extracted with role changed to assistant
 
         Returns:
             A PromptMessageMultipart with assistant role and the specified content
         """
+        # Handle PromptMessage and PromptMessageMultipart directly
+        if len(content_items) == 1:
+            item = content_items[0]
+            if isinstance(item, PromptMessage):
+                return PromptMessageMultipart(role="assistant", content=[item.content])
+            elif isinstance(item, PromptMessageMultipart):
+                # Keep the content but change role to assistant
+                return PromptMessageMultipart(role="assistant", content=item.content)
+                
+        # Use the original implementation for other types
         messages = Assistant(*content_items)
-        return PromptMessageMultipart(role="assistant", content=[msg["content"] for msg in messages])
+        return PromptMessageMultipart(
+            role="assistant", content=[msg["content"] for msg in messages]
+        )
 
     @classmethod
-    def message(cls, *content_items, role: Literal["user", "assistant"] = "user") -> PromptMessageMultipart:
+    def message(
+        cls, *content_items: Union[str, Path, bytes, dict, MCPContentType, PromptMessage, PromptMessageMultipart], 
+        role: Literal["user", "assistant"] = "user"
+    ) -> PromptMessageMultipart:
         """
         Create a PromptMessageMultipart with the specified role and content items.
 
         Args:
-            *content_items: Content items (strings, file paths, etc.)
+            *content_items: Content items in various formats:
+                - Strings: Converted to TextContent
+                - Path objects: Converted based on file type (image/text/binary)
+                - Bytes: Treated as image data
+                - Dicts with role/content: Content extracted
+                - TextContent: Used directly
+                - ImageContent: Used directly
+                - EmbeddedResource: Used directly
+                - PromptMessage: Content extracted
+                - PromptMessageMultipart: Content extracted with role changed as specified
             role: Role for the message (user or assistant)
 
         Returns:
             A PromptMessageMultipart with the specified role and content
         """
+        # Handle PromptMessage and PromptMessageMultipart directly
+        if len(content_items) == 1:
+            item = content_items[0]
+            if isinstance(item, PromptMessage):
+                return PromptMessageMultipart(role=role, content=[item.content])
+            elif isinstance(item, PromptMessageMultipart):
+                # Keep the content but change role as specified
+                return PromptMessageMultipart(role=role, content=item.content)
+                
+        # Use the original implementation for other types
         messages = MCPPrompt(*content_items, role=role)
         return PromptMessageMultipart(
             role=messages[0]["role"] if messages else role,

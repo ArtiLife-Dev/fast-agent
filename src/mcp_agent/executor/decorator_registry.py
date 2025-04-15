@@ -13,7 +13,9 @@ class DecoratorRegistry:
 
     def __init__(self) -> None:
         self._workflow_defn_decorators: Dict[str, Callable[[Type], Type]] = {}
-        self._workflow_run_decorators: Dict[str, Callable[[Callable[..., R]], Callable[..., R]]] = {}
+        self._workflow_run_decorators: Dict[
+            str, Callable[[Callable[..., R]], Callable[..., R]]
+        ] = {}
 
     def register_workflow_defn_decorator(
         self,
@@ -60,7 +62,9 @@ class DecoratorRegistry:
             )
         self._workflow_run_decorators[executor_name] = decorator
 
-    def get_workflow_run_decorator(self, executor_name: str) -> Callable[[Callable[..., R]], Callable[..., R]]:
+    def get_workflow_run_decorator(
+        self, executor_name: str
+    ) -> Callable[[Callable[..., R]], Callable[..., R]]:
         """
         Retrieves a workflow run decorator for a given executor.
 

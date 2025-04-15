@@ -20,8 +20,8 @@ async def test_sampling_output_anthropic(fast_agent):
         async with fast.run() as agent:
             story = await agent.with_resource(
                 "Here is a story",
-                "sampling_resource_anthropic",
                 "resource://fast-agent/short-story/kittens",
+                "sampling_resource_anthropic",
             )
 
             assert len(story) > 300
@@ -50,8 +50,8 @@ async def test_sampling_output_gpt(fast_agent):
         async with fast.run() as agent:
             story = await agent.with_resource(
                 "Here is a story",
-                "sampling_resource_openai",
                 "resource://fast-agent/short-story/kittens",
+                "sampling_resource_openai",
             )
 
             assert len(story) > 300

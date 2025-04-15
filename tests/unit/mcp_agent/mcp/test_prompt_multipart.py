@@ -2,180 +2,146 @@
 Tests for using PromptMessageMultipart in augmented LLMs.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+import os
+import tempfile
+from pathlib import Path
 
-import pytest
-from mcp.types import GetPromptResult, PromptMessage, TextContent
-
-from mcp_agent.workflows.llm.augmented_llm import AugmentedLLM
-
-
-@pytest.mark.asyncio
-async def test_apply_prompt_template_with_multipart():
-    """Test applying a prompt template using PromptMessageMultipart."""
-
-    # Create a mock AugmentedLLM instance
-    llm = MagicMock(spec=AugmentedLLM)
-    llm.logger = MagicMock()
-    llm.history = MagicMock()
-    llm.type_converter = MagicMock()
-    llm.show_prompt_loaded = AsyncMock()
-    llm.generate_str = AsyncMock(return_value="Generated response")
-    llm.provider = "Test"  # Add a provider that will use the fallback path
-
-    # Make the methods accessible for testing
-    llm.apply_prompt_template = AugmentedLLM.apply_prompt_template.__get__(llm, AugmentedLLM)
-    llm._apply_prompt_template_provider_specific = AugmentedLLM._apply_prompt_template_provider_specific.__get__(llm, AugmentedLLM)
-
-    # Create test prompt messages
-    prompt_messages = [
-        PromptMessage(role="assistant", content=TextContent(type="text", text="I'm an assistant")),
-        PromptMessage(role="user", content=TextContent(type="text", text="Tell me about Python")),
-    ]
-
-    # Create a GetPromptResult
-    prompt_result = GetPromptResult(messages=prompt_messages, description="Test prompt")
-
-    # Test the method with user as last message (should generate a response)
-    result = await llm.apply_prompt_template(prompt_result, "test_prompt")
-
-    # Verify the method converted to PromptMessageMultipart
-    llm.show_prompt_loaded.assert_awaited_once()
-
-    # Verify it extracted the user message and generated a response
-    llm.generate_str.assert_awaited_once_with("Tell me about Python")
-    assert result == "Generated response"
-
-    # Reset mocks
-    llm.show_prompt_loaded.reset_mock()
-    llm.generate_str.reset_mock()
-    llm.history.reset_mock()
-
-    # Test with assistant as last message (should return the text directly)
-    prompt_messages = [
-        PromptMessage(role="user", content=TextContent(type="text", text="Tell me about Python")),
-        PromptMessage(
-            role="assistant",
-            content=TextContent(type="text", text="Python is a programming language"),
-        ),
-    ]
-
-    prompt_result = GetPromptResult(messages=prompt_messages, description="Test prompt")
-
-    result = await llm.apply_prompt_template(prompt_result, "test_prompt")
-
-    # Verify it didn't generate a response
-    llm.generate_str.assert_not_awaited()
-
-    # Verify it returned the assistant's response directly
-    assert result == "Python is a programming language"
+from mcp_agent.mcp.prompts.prompt_load import create_messages_with_resources, load_prompt
+from mcp_agent.mcp.prompts.prompt_template import PromptTemplateLoader
 
 
-@pytest.mark.asyncio
-async def test_apply_prompt_template_with_multiple_content():
-    """Test applying a prompt template with multiple content parts."""
+def test_create_messages_with_resources_alternating_roles():
+    """Test create_messages_with_resources maintains correct role alternation."""
+    # Create a temporary conversation file with alternating roles
+    with tempfile.NamedTemporaryFile(mode="w+", suffix=".md", delete=False) as tf:
+        tf.write("""---USER
+message 1
+---ASSISTANT
+message 2
+---USER
+message 3
+---ASSISTANT
+message 4
+""")
+        tf_path = Path(tf.name)
 
-    # Create a mock AugmentedLLM instance
-    llm = MagicMock(spec=AugmentedLLM)
-    llm.logger = MagicMock()
-    llm.history = MagicMock()
-    llm.type_converter = MagicMock()
-    llm.show_prompt_loaded = AsyncMock()
-    llm.generate_str = AsyncMock(return_value="Generated response")
-    llm.provider = "Test"  # Add a provider that will use the fallback path
+    try:
+        # Use the PromptTemplateLoader to parse the file
+        loader = PromptTemplateLoader()
+        template = loader.load_from_file(tf_path)
 
-    # Make the methods accessible for testing
-    llm.apply_prompt_template = AugmentedLLM.apply_prompt_template.__get__(llm, AugmentedLLM)
-    llm._apply_prompt_template_provider_specific = AugmentedLLM._apply_prompt_template_provider_specific.__get__(llm, AugmentedLLM)
+        # Create messages with resources
+        messages = create_messages_with_resources(template.content_sections, [tf_path])
 
-    # Create test prompt messages with multiple content parts
-    # This simulates a scenario where the same user sent multiple messages
-    prompt_messages = [
-        PromptMessage(role="user", content=TextContent(type="text", text="Hello")),
-        PromptMessage(
-            role="user",
-            content=TextContent(type="text", text="I have a question about Python"),
-        ),
-        PromptMessage(
-            role="user",
-            content=TextContent(type="text", text="How do I create a function?"),
-        ),
-    ]
+        # Verify we get 4 messages with alternating roles
+        assert len(messages) == 4
+        assert messages[0].role == "user"
+        assert messages[1].role == "assistant"
+        assert messages[2].role == "user"
+        assert messages[3].role == "assistant"
 
-    # Create a GetPromptResult
-    prompt_result = GetPromptResult(messages=prompt_messages, description="Test prompt with multiple parts")
-
-    # Test the method
-    await llm.apply_prompt_template(prompt_result, "test_prompt")
-
-    # In PromptMessageMultipart, these should be combined into a single message
-    # with three content parts, and we should extract all text parts
-    "Hello\nI have a question about Python\nHow do I create a function?"
-    llm.generate_str.assert_awaited_once()
-
-    # The arguments passed to generate_str depend on the implementation
-    # Our implementation should join the text parts with newlines
-    args = llm.generate_str.call_args[0][0]
-    assert "Hello" in args
-    assert "I have a question about Python" in args
-    assert "How do I create a function?" in args
+        # Verify contents
+        assert "message 1" in messages[0].content.text  # type: ignore
+        assert "message 2" in messages[1].content.text  # type: ignore
+        assert "message 3" in messages[2].content.text  # type: ignore
+        assert "message 4" in messages[3].content.text  # type: ignore
+    finally:
+        # Clean up
+        os.unlink(tf_path)
 
 
-@pytest.mark.asyncio
-async def test_apply_prompt_template_with_images():
-    """Test applying a prompt template with image content."""
+def test_create_messages_with_resources_roles_with_resources():
+    """Test create_messages_with_resources maintains roles even with resources."""
+    # Create a temporary conversation file with resources
+    with tempfile.NamedTemporaryFile(mode="w+", suffix=".md", delete=False) as tf:
+        tf.write("""---USER
+user message
+---RESOURCE
+resource1.txt
+---ASSISTANT
+assistant message
+---RESOURCE
+resource2.txt
+""")
+        tf_path = Path(tf.name)
 
-    # Create a mock AugmentedLLM instance
-    llm = MagicMock(spec=AugmentedLLM)
-    llm.logger = MagicMock()
-    llm.history = MagicMock()
-    llm.type_converter = MagicMock()
-    llm.show_prompt_loaded = AsyncMock()
-    llm.generate_str = AsyncMock(return_value="Generated response")
-    llm.provider = "Test"  # Use the fallback path
+    # Create resource files
+    resource1_path = tf_path.parent / "resource1.txt"
+    resource2_path = tf_path.parent / "resource2.txt"
 
-    # Make the methods accessible for testing
-    llm.apply_prompt_template = AugmentedLLM.apply_prompt_template.__get__(llm, AugmentedLLM)
-    llm._apply_prompt_template_provider_specific = AugmentedLLM._apply_prompt_template_provider_specific.__get__(llm, AugmentedLLM)
+    try:
+        # Create the resource files
+        with open(resource1_path, "w") as f:
+            f.write("user resource content")
+        with open(resource2_path, "w") as f:
+            f.write("assistant resource content")
 
-    # Create a GetPromptResult with a message containing an image
-    from mcp.types import ImageContent
+        # Use the PromptTemplateLoader to parse the file
+        loader = PromptTemplateLoader()
+        template = loader.load_from_file(tf_path)
 
-    prompt_result = GetPromptResult(
-        messages=[
-            PromptMessage(
-                role="user",
-                content=ImageContent(type="image", data="base64encodeddata", mimeType="image/png"),
-            ),
-        ],
-        description="Test prompt with image",
-    )
+        # Create messages with resources
+        messages = create_messages_with_resources(template.content_sections, [tf_path])
 
-    # Test the method
-    result = await llm.apply_prompt_template(prompt_result, "test_prompt")
+        # We should get 4 messages:
+        # 1. User text
+        # 2. User resource
+        # 3. Assistant text
+        # 4. Assistant resource
+        assert len(messages) == 4
 
-    # Verify the LLM received a text representation of the image
-    llm.generate_str.assert_awaited_once()
-    args = llm.generate_str.call_args[0][0]
-    assert "[Image: image/png]" in args
+        # Check roles - this is where the bug manifests
+        # Currently all messages from the user section (text + resources) will have role="user"
+        # and all messages from the assistant section will have role="assistant"
+        assert messages[0].role == "user"  # User text message
+        assert (
+            messages[1].role == "user"
+        )  # User resource message (should this be user or assistant?)
+        assert messages[2].role == "assistant"  # Assistant text message
+        assert messages[3].role == "assistant"  # Assistant resource message
 
-    # Test with assistant message containing an image
-    llm.generate_str.reset_mock()
-    prompt_result = GetPromptResult(
-        messages=[
-            PromptMessage(
-                role="assistant",
-                content=ImageContent(type="image", data="base64encodeddata", mimeType="image/jpeg"),
-            ),
-        ],
-        description="Test prompt with assistant image",
-    )
+        # The current implementation groups messages by section, which breaks the alternating pattern
+        # expected by the playback code.
+    finally:
+        # Clean up
+        os.unlink(tf_path)
+        if resource1_path.exists():
+            os.unlink(resource1_path)
+        if resource2_path.exists():
+            os.unlink(resource2_path)
 
-    result = await llm.apply_prompt_template(prompt_result, "test_prompt")
 
-    # Verify we didn't call generate_str (assistant message is returned directly)
-    llm.generate_str.assert_not_awaited()
+def test_load_prompt_from_file():
+    """Test the load_prompt function preserves roles correctly."""
+    # Create a temporary conversation file with alternating roles
+    with tempfile.NamedTemporaryFile(mode="w+", suffix=".md", delete=False) as tf:
+        tf.write("""---USER
+user1
+---ASSISTANT
+assistant1
+---USER
+user2
+---ASSISTANT
+assistant2
+""")
+        tf_path = Path(tf.name)
 
-    # Verify the result contains a description of the image
-    assert "[Image: image/jpeg]" in result
-    assert "message contained non-text content" in result
+    try:
+        # Load the prompt directly
+        messages = load_prompt(tf_path)
+
+        # Verify we get 4 messages with alternating roles - this will fail with the current implementation
+        assert len(messages) == 4
+        assert messages[0].role == "user"
+        assert messages[1].role == "assistant"
+        assert messages[2].role == "user"
+        assert messages[3].role == "assistant"
+
+        # Verify contents
+        assert "user1" in messages[0].content.text  # type: ignore
+        assert "assistant1" in messages[1].content.text  # type: ignore
+        assert "user2" in messages[2].content.text  # type: ignore
+        assert "assistant2" in messages[3].content.text  # type: ignore
+    finally:
+        # Clean up
+        os.unlink(tf_path)

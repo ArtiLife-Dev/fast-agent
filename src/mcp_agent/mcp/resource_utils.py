@@ -98,7 +98,9 @@ def create_resource_reference(uri: str, mime_type: str) -> "EmbeddedResource":
     return EmbeddedResource(type="resource", resource=resource_contents)
 
 
-def create_embedded_resource(resource_path: str, content: str, mime_type: str, is_binary: bool = False) -> EmbeddedResource:
+def create_embedded_resource(
+    resource_path: str, content: str, mime_type: str, is_binary: bool = False
+) -> EmbeddedResource:
     """Create an embedded resource content object"""
     # Format a valid resource URI string
     resource_uri_str = create_resource_uri(resource_path)

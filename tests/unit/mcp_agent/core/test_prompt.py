@@ -32,6 +32,27 @@ def test_user_method():
     assert len(message.content) == 2
     assert message.content[0].text == "Hello,"
     assert message.content[1].text == "How are you?"
+    
+    # Test with PromptMessage
+    prompt_message = PromptMessage(
+        role="assistant", 
+        content=TextContent(type="text", text="I'm a PromptMessage")
+    )
+    message = Prompt.user(prompt_message)
+    
+    assert isinstance(message, PromptMessageMultipart)
+    assert message.role == "user"  # Role should be changed to user
+    assert len(message.content) == 1
+    assert message.content[0].text == "I'm a PromptMessage"
+    
+    # Test with PromptMessageMultipart
+    multipart = Prompt.assistant("I'm a multipart message")
+    message = Prompt.user(multipart)
+    
+    assert isinstance(message, PromptMessageMultipart)
+    assert message.role == "user"  # Role should be changed to user
+    assert len(message.content) == 1
+    assert message.content[0].text == "I'm a multipart message"
 
 
 def test_assistant_method():
@@ -93,6 +114,64 @@ def test_with_file_paths():
         # Decode the base64 data
         decoded = base64.b64decode(message.content[1].data)
         assert decoded == b"fake image data"
+        
+        # Test with ResourceContents and EmbeddedResource
+        from mcp.types import ReadResourceResult, TextResourceContents
+        from pydantic import AnyUrl
+        
+        # Create a TextResourceContents
+        text_resource = TextResourceContents(
+            uri=AnyUrl("file:///test/example.txt"), 
+            text="Sample text",
+            mimeType="text/plain"
+        )
+        
+        # Test with ResourceContent
+        message = Prompt.user("Check this resource:", text_resource)
+        assert message.role == "user"
+        assert len(message.content) == 2
+        assert isinstance(message.content[1], EmbeddedResource)
+        assert message.content[1].resource == text_resource
+        
+        # Test with EmbeddedResource
+        embedded = EmbeddedResource(type="resource", resource=text_resource)
+        message = Prompt.user("Another resource:", embedded)
+        assert message.role == "user"
+        assert len(message.content) == 2
+        # Using dictionary comparison because the objects might not be identity-equal
+        assert message.content[1].type == embedded.type
+        assert message.content[1].resource.text == embedded.resource.text
+        
+        # Test with ReadResourceResult
+        resource_result = ReadResourceResult(contents=[text_resource])
+        message = Prompt.user("Resource result:", resource_result)
+        assert message.role == "user"
+        assert len(message.content) > 1  # Should have text + resource
+        assert message.content[0].text == "Resource result:"
+        assert isinstance(message.content[1], EmbeddedResource)
+        
+        # Test with direct TextContent
+        text_content = TextContent(type="text", text="Direct text content")
+        message = Prompt.user(text_content)
+        assert message.role == "user"
+        assert len(message.content) == 1
+        assert message.content[0] == text_content
+        
+        # Test with direct ImageContent
+        image_content = ImageContent(type="image", data="ZmFrZSBpbWFnZSBkYXRh", mimeType="image/png")
+        message = Prompt.assistant(image_content)
+        assert message.role == "assistant"
+        assert len(message.content) == 1
+        assert message.content[0] == image_content
+        
+        # Test with mixed content including direct content types
+        message = Prompt.user("Text followed by:", text_content, "And an image:", image_content)
+        assert message.role == "user"
+        assert len(message.content) == 4
+        assert message.content[0].text == "Text followed by:"
+        assert message.content[1] == text_content
+        assert message.content[2].text == "And an image:"
+        assert message.content[3] == image_content
 
     finally:
         # Clean up

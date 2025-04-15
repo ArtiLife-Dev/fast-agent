@@ -55,12 +55,18 @@ FASTAGENT_SECRETS_TEMPLATE = """
 # FastAgent Secrets Configuration
 # WARNING: Keep this file secure and never commit to version control
 
-# Alternatively set OPENAI_API_KEY and ANTHROPIC_API_KEY environment variables. Config file takes precedence.
+# Alternatively set OPENAI_API_KEY, ANTHROPIC_API_KEY or other environment variables. 
+# Keys in the configuration file override environment variables.
 
 openai:
     api_key: <your-api-key-here>
 anthropic:
     api_key: <your-api-key-here>
+deepseek:
+    api_key: <your-api-key-here>
+openrouter:
+    api_key: <your-api-key-here>
+
 
 # Example of setting an MCP Server environment variable
 mcp:
@@ -73,7 +79,7 @@ mcp:
 
 GITIGNORE_TEMPLATE = """
 # FastAgent secrets file
-fastagent-secrets.yaml
+fastagent.secrets.yaml
 
 # Python
 __pycache__/
@@ -116,15 +122,15 @@ import asyncio
 from mcp_agent.core.fastagent import FastAgent
 
 # Create the application
-fast = FastAgent("FastAgent Example")
+fast = FastAgent("fast-agent example")
 
 
 # Define the agent
-@fast.agent(instruction="You are a helpful AI Agent", servers=["fetch"])
+@fast.agent(instruction="You are a helpful AI Agent")
 async def main():
     # use the --model command line switch or agent arguments to change model
     async with fast.run() as agent:
-        await agent()
+        await agent.interactive()
 
 
 if __name__ == "__main__":
@@ -173,7 +179,9 @@ def init(
 
     config_path = Path(config_dir).resolve()
     if not config_path.exists():
-        should_create = Confirm.ask(f"Directory {config_path} does not exist. Create it?", default=True)
+        should_create = Confirm.ask(
+            f"Directory {config_path} does not exist. Create it?", default=True
+        )
         if should_create:
             config_path.mkdir(parents=True)
         else:
@@ -212,9 +220,15 @@ def init(
         console.print("\n[green]Setup completed successfully![/green]")
         if "fastagent.secrets.yaml" in created:
             console.print("\n[yellow]Important:[/yellow] Remember to:")
-            console.print("1. Add your API keys to fastagent-secrets.yaml or set OPENAI_API_KEY and ANTHROPIC_API_KEY environment variables")
-            console.print("2. Keep fastagent.secrets.yaml secure and never commit it to version control")
-            console.print("3. Update fastagent.config.yaml to set a default model (currently system default is 'haiku')")
+            console.print(
+                "1. Add your API keys to fastagent.secrets.yaml or set OPENAI_API_KEY and ANTHROPIC_API_KEY environment variables"
+            )
+            console.print(
+                "2. Keep fastagent.secrets.yaml secure and never commit it to version control"
+            )
+            console.print(
+                "3. Update fastagent.config.yaml to set a default model (currently system default is 'haiku')"
+            )
         console.print("\nTo get started, run:")
         console.print("  uv run agent.py")
     else:
