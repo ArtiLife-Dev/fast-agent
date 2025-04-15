@@ -12,6 +12,7 @@ from mcp_agent.agents.workflow.evaluator_optimizer import (
 )
 from mcp_agent.agents.workflow.orchestrator_agent import OrchestratorAgent
 from mcp_agent.agents.workflow.parallel_agent import ParallelAgent
+from mcp_agent.agents.workflow.peers_agent import PeersAgent  # Added this line
 from mcp_agent.agents.workflow.router_agent import RouterAgent
 from mcp_agent.app import MCPApp
 from mcp_agent.core.agent_types import AgentType
@@ -305,6 +306,46 @@ async def create_agents_by_type(
                 await evaluator_optimizer.initialize()
                 result_agents[name] = evaluator_optimizer
 
+            elif agent_type == AgentType.PEERS:
+                # Get the peer agents
+                peer_agent_names = agent_data.get("peer_agents", [])
+                peer_agents_instances = []
+                for agent_name in peer_agent_names:
+                    if agent_name not in active_agents:
+                        raise AgentConfigError(
+                            f"Peers workflow '{name}' requires agent '{agent_name}', but it was not found."
+                        )
+                    peer_agents_instances.append(active_agents[agent_name])
+
+                # Get other peers config
+                max_rounds = agent_data.get("max_rounds", 5)
+                # consensus_mechanism = agent_data.get("consensus_mechanism", "max_rounds") # Removed
+                coordinator_agent_name = agent_data.get("coordinator_agent_name")
+                if not coordinator_agent_name:
+                    raise AgentConfigError(
+                        f"Peers workflow '{name}' requires 'coordinator_agent_name' to be specified."
+                    )
+                if coordinator_agent_name not in [a.name for a in peer_agents_instances]:
+                     # Check if coordinator is actually in the list of instances
+                     raise AgentConfigError(
+                         f"Coordinator agent '{coordinator_agent_name}' specified for Peers workflow '{name}' "
+                         f"must be one of the agents listed in 'peer_agents'."
+                     )
+
+
+                # Create the peers agent
+                peers_workflow = PeersAgent(
+                    config=config,
+                    context=app_instance.context,
+                    peer_agents=peer_agents_instances, # Contains all agents including coordinator
+                    coordinator_agent_name=coordinator_agent_name,
+                    max_rounds=max_rounds,
+                    # consensus_mechanism=consensus_mechanism, # Removed
+                )
+                await peers_workflow.initialize()
+                # Peers workflow orchestrates other agents, doesn't typically have its own LLM attached directly
+                result_agents[name] = peers_workflow
+
             else:
                 raise ValueError(f"Unknown agent type: {agent_type}")
 
@@ -411,6 +452,21 @@ async def create_agents_in_dependency_order(
                 model_factory_func,
             )
             active_agents.update(evaluator_agents)
+
+        # Create peers agents (depends on basic agents)
+        if AgentType.PEERS.value in [agents_dict[name]["type"] for name in group]:
+            peers_agents = await create_agents_by_type(
+                app_instance,
+                {
+                    name: agents_dict[name]
+                    for name in group
+                    if agents_dict[name]["type"] == AgentType.PEERS.value
+                },
+                AgentType.PEERS,
+                active_agents,
+                model_factory_func,
+            )
+            active_agents.update(peers_agents)
 
         # Create orchestrator agents last since they might depend on other agents
         if AgentType.ORCHESTRATOR.value in [agents_dict[name]["type"] for name in group]:

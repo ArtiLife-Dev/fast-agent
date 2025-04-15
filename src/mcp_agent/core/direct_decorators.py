@@ -79,6 +79,15 @@ class DecoratedEvaluatorOptimizerProtocol(DecoratedAgentProtocol[P, R], Protocol
     _evaluator: str
 
 
+# Protocol for peers functions
+class DecoratedPeersProtocol(DecoratedAgentProtocol[P, R], Protocol):
+    """Protocol for decorated peers functions with additional metadata."""
+
+    _peer_agents: List[str]
+    _coordinator_agent_name: str
+    _max_rounds: int
+
+
 def _decorator_impl(
     self,
     agent_type: AgentType,
@@ -440,5 +449,57 @@ def evaluator_optimizer(
             evaluator=evaluator,
             min_rating=min_rating,
             max_refinements=max_refinements,
+        ),
+    )
+
+
+def peers(
+    self,
+    name: str,
+    *,
+    agents: List[str],
+    coordinator_agent_name: str,
+    instruction: Optional[str] = None,
+    max_rounds: int = 5,
+) -> Callable[[AgentCallable[P, R]], DecoratedPeersProtocol[P, R]]:
+    """
+    Decorator to create and register a peers agent workflow with type-safe signature.
+
+    Args:
+        name: Name of the peers workflow agent.
+        agents: List of agent names participating in the peer group (including the coordinator).
+        coordinator_agent_name: The name of the agent designated as the coordinator.
+        instruction: Base instruction for the peers workflow (optional).
+        max_rounds: Maximum number of conversational rounds.
+
+    Returns:
+        A decorator that registers the peers workflow with proper type annotations.
+    """
+    if not agents:
+        from mcp_agent.core.exceptions import AgentConfigError
+
+        raise AgentConfigError(f"Peers workflow '{name}' requires at least one agent in the agents list.")
+    if coordinator_agent_name not in agents:
+        raise AgentConfigError(
+            f"Coordinator agent '{coordinator_agent_name}' must be included in the 'agents' list for Peers workflow '{name}'."
+        )
+
+    default_instruction = """
+    You orchestrate a collaborative discussion among a group of peer agents.
+    Manage rounds of conversation, allowing agents to contribute or abstain.
+    Maintain a shared history of contributions and determine when the discussion concludes.
+    """
+
+    return cast(
+        "Callable[[AgentCallable[P, R]], DecoratedPeersProtocol[P, R]]",
+        _decorator_impl(
+            self,
+            AgentType.PEERS,
+            name=name,
+            instruction=instruction or default_instruction,
+            servers=[],  # Peers workflow manages agents, doesn't directly use servers
+            peer_agents=agents,  # Pass the full list including coordinator
+            coordinator_agent_name=coordinator_agent_name,
+            max_rounds=max_rounds,
         ),
     )

@@ -20,6 +20,7 @@ class AgentType(Enum):
     EVALUATOR_OPTIMIZER = "evaluator_optimizer"
     ROUTER = "router"
     CHAIN = "chain"
+    PEERS = "peers"
 
 
 @dataclass
