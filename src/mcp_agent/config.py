@@ -149,7 +149,20 @@ class GenericSettings(BaseModel):
     base_url: str | None = None
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
-    
+
+
+class GoogleConfig(BaseModel):
+    """
+    Settings for using Google Gemini models in the fast-agent application.
+    """
+
+    api_key: str | None = None
+
+    # Add other Google-specific settings here if needed in the future
+    # base_url: str | None = None # Gemini SDK handles endpoints based on vertexai flag
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
 
 class OpenRouterSettings(BaseModel):
     """
@@ -278,6 +291,9 @@ class Settings(BaseSettings):
 
     openrouter: OpenRouterSettings | None = None
     """Settings for using OpenRouter models in the fast-agent application"""
+
+    google: GoogleConfig | None = None
+    """Settings for using Google Gemini models in the fast-agent application"""
 
     generic: GenericSettings | None = None
     """Settings for using Generic models in the fast-agent application"""

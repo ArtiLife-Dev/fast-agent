@@ -9,6 +9,9 @@ from mcp_agent.llm.augmented_llm_passthrough import PassthroughLLM
 from mcp_agent.llm.augmented_llm_playback import PlaybackLLM
 from mcp_agent.llm.providers.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_deepseek import DeepSeekAugmentedLLM
+
+# Import the placeholder Gemini LLM class
+from mcp_agent.llm.providers.augmented_llm_gemini import GeminiAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_generic import GenericAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_openai import OpenAIAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_openrouter import OpenRouterAugmentedLLM
@@ -25,6 +28,7 @@ LLMClass = Union[
     Type[PlaybackLLM],
     Type[DeepSeekAugmentedLLM],
     Type[OpenRouterAugmentedLLM],
+    Type[GeminiAugmentedLLM], # Add Gemini LLM type
 ]
 
 
@@ -37,6 +41,7 @@ class Provider(Enum):
     DEEPSEEK = auto()
     GENERIC = auto()
     OPENROUTER = auto()
+    GOOGLE = auto() # Add Google provider
 
 
 class ReasoningEffort(Enum):
@@ -67,6 +72,7 @@ class ModelFactory:
         "deepseek": Provider.DEEPSEEK,
         "generic": Provider.GENERIC,
         "openrouter": Provider.OPENROUTER,
+        "google": Provider.GOOGLE, # Add Google provider mapping
     }
 
     # Mapping of effort strings to enum values
@@ -104,6 +110,14 @@ class ModelFactory:
         "claude-3-opus-latest": Provider.ANTHROPIC,
         "deepseek-chat": Provider.DEEPSEEK,
         #        "deepseek-reasoner": Provider.DEEPSEEK, reinstate on release
+        "gemini-2.5-pro-preview-03-25": Provider.GOOGLE,
+        "gemini-2.5-pro-preview-03-25-code": Provider.GOOGLE,
+        "gemini-2.5-pro-preview-03-25-search": Provider.GOOGLE,
+        "gemini-2.5-pro-preview-03-25-code-search": Provider.GOOGLE,
+        "gemini-2.0-flash": Provider.GOOGLE,
+        "gemini-2.0-flash-code": Provider.GOOGLE,
+        "gemini-2.0-flash-search": Provider.GOOGLE,
+        "gemini-2.0-flash-code-search": Provider.GOOGLE,
     }
 
     MODEL_ALIASES = {
@@ -118,6 +132,13 @@ class ModelFactory:
         "opus3": "claude-3-opus-latest",
         "deepseekv3": "deepseek-chat",
         "deepseek": "deepseek-chat",
+        # Add aliases for Gemini variants if desired, e.g.:
+        # "gemini-pro": "gemini-2.5-pro-preview-03-25",
+        # "gemini-flash": "gemini-2.0-flash",
+        # "gemini-pro-code": "gemini-2.5-pro-preview-03-25-code",
+        # "gemini-flash-code": "gemini-2.0-flash-code",
+        # "gemini-pro-search": "gemini-2.5-pro-preview-03-25-search",
+        # "gemini-flash-search": "gemini-2.0-flash-search",
     }
 
     # Mapping of providers to their LLM classes
@@ -128,6 +149,7 @@ class ModelFactory:
         Provider.DEEPSEEK: DeepSeekAugmentedLLM,
         Provider.GENERIC: GenericAugmentedLLM,
         Provider.OPENROUTER: OpenRouterAugmentedLLM,
+        Provider.GOOGLE: GeminiAugmentedLLM, # Add Google provider class mapping
     }
 
     # Mapping of special model names to their specific LLM classes
