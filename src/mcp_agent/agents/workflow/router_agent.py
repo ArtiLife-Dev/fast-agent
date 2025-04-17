@@ -106,9 +106,9 @@ class RouterAgent(BaseAgent):
     """
 
     @property
-    def agent_type(self) -> str:
+    def agent_type(self) -> AgentType:
         """Return the type of this agent."""
-        return AgentType.ROUTER.value
+        return AgentType.ROUTER
 
     def __init__(
         self,

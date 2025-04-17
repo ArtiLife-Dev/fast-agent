@@ -1,12 +1,14 @@
-from dataclasses import dataclass
-from enum import Enum, auto
+from enum import Enum
 from typing import Callable, Dict, Optional, Type, Union
+
+from pydantic import BaseModel
 
 from mcp_agent.agents.agent import Agent
 from mcp_agent.core.exceptions import ModelConfigError
 from mcp_agent.core.request_params import RequestParams
 from mcp_agent.llm.augmented_llm_passthrough import PassthroughLLM
 from mcp_agent.llm.augmented_llm_playback import PlaybackLLM
+from mcp_agent.llm.provider_types import Provider
 from mcp_agent.llm.providers.augmented_llm_anthropic import AnthropicAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_deepseek import DeepSeekAugmentedLLM
 
@@ -32,18 +34,6 @@ LLMClass = Union[
 ]
 
 
-class Provider(Enum):
-    """Supported LLM providers"""
-
-    ANTHROPIC = auto()
-    OPENAI = auto()
-    FAST_AGENT = auto()
-    DEEPSEEK = auto()
-    GENERIC = auto()
-    OPENROUTER = auto()
-    GOOGLE = auto() # Add Google provider
-
-
 class ReasoningEffort(Enum):
     """Optional reasoning effort levels"""
 
@@ -52,8 +42,7 @@ class ReasoningEffort(Enum):
     HIGH = "high"
 
 
-@dataclass
-class ModelConfig:
+class ModelConfig(BaseModel):
     """Configuration for a specific model"""
 
     provider: Provider
@@ -63,17 +52,6 @@ class ModelConfig:
 
 class ModelFactory:
     """Factory for creating LLM instances based on model specifications"""
-
-    # Mapping of provider strings to enum values
-    PROVIDER_MAP = {
-        "anthropic": Provider.ANTHROPIC,
-        "openai": Provider.OPENAI,
-        "fast-agent": Provider.FAST_AGENT,
-        "deepseek": Provider.DEEPSEEK,
-        "generic": Provider.GENERIC,
-        "openrouter": Provider.OPENROUTER,
-        "google": Provider.GOOGLE, # Add Google provider mapping
-    }
 
     # Mapping of effort strings to enum values
     EFFORT_MAP = {
@@ -178,8 +156,8 @@ class ModelFactory:
         # Check first part for provider
         if len(model_parts) > 1:
             potential_provider = model_parts[0]
-            if potential_provider in cls.PROVIDER_MAP:
-                provider = cls.PROVIDER_MAP[potential_provider]
+            if any(provider.value == potential_provider for provider in Provider):
+                provider = Provider(potential_provider)
                 model_parts = model_parts[1:]
 
         # Join remaining parts as model name

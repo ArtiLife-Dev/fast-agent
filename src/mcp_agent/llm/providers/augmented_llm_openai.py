@@ -1,4 +1,3 @@
-import os
 from typing import List, Tuple, Type
 
 from mcp.types import (
@@ -29,6 +28,7 @@ from mcp_agent.llm.augmented_llm import (
     ModelT,
     RequestParams,
 )
+from mcp_agent.llm.provider_types import Provider
 from mcp_agent.llm.providers.multipart_converter_openai import OpenAIConverter
 from mcp_agent.llm.providers.sampling_converter_openai import (
     OpenAISamplingConverter,
@@ -49,14 +49,13 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
     This implementation uses OpenAI's ChatCompletion as the LLM.
     """
 
-    def __init__(self, provider_name: str = "OpenAI", *args, **kwargs) -> None:
+    def __init__(self, provider: Provider = Provider.OPENAI, *args, **kwargs) -> None:
         # Set type_converter before calling super().__init__
         if "type_converter" not in kwargs:
             kwargs["type_converter"] = OpenAISamplingConverter
 
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, provider=provider, **kwargs)
 
-        self.provider = provider_name
         # Initialize logger with name if available
         self.logger = get_logger(f"{__name__}.{self.name}" if self.name else __name__)
 
@@ -89,27 +88,6 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
             max_iterations=10,
             use_history=True,
         )
-
-    def _api_key(self) -> str:
-        config = self.context.config
-        api_key = None
-
-        if hasattr(config, "openai") and config.openai:
-            api_key = config.openai.api_key
-            if api_key == "<your-api-key-here>":
-                api_key = None
-
-        if api_key is None:
-            api_key = os.getenv("OPENAI_API_KEY")
-
-        if not api_key:
-            raise ProviderKeyError(
-                "OpenAI API key not configured",
-                "The OpenAI API key is required but not set.\n"
-                "Add it to your configuration file under openai.api_key\n"
-                "Or set the OPENAI_API_KEY environment variable",
-            )
-        return api_key
 
     def _base_url(self) -> str:
         return self.context.config.openai.base_url if self.context.config.openai else None
@@ -371,7 +349,7 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
             The parsed response as a Pydantic model, or None if parsing fails
         """
 
-        if not "OpenAI" == self.provider:
+        if not Provider.OPENAI == self.provider:
             return await super().structured(prompt, model, request_params)
 
         logger = get_logger(__name__)

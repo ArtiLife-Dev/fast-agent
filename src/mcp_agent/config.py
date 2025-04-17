@@ -168,9 +168,10 @@ class OpenRouterSettings(BaseModel):
     """
     Settings for using OpenRouter models via its OpenAI-compatible API.
     """
+
     api_key: str | None = None
-    
-    base_url: str | None = None # Optional override, defaults handled in provider
+
+    base_url: str | None = None  # Optional override, defaults handled in provider
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
@@ -310,8 +311,6 @@ class Settings(BaseSettings):
         while current_dir != current_dir.parent:
             for filename in [
                 "fastagent.config.yaml",
-                "mcp-agent.config.yaml",
-                "mcp_agent.config.yaml",
             ]:
                 config_path = current_dir / filename
                 if config_path.exists():
@@ -383,8 +382,6 @@ def get_settings(config_path: str | None = None) -> Settings:
             while current_dir != current_dir.parent and not found_secrets:
                 for secrets_filename in [
                     "fastagent.secrets.yaml",
-                    "mcp-agent.secrets.yaml",
-                    "mcp_agent.secrets.yaml",
                 ]:
                     secrets_file = current_dir / secrets_filename
                     if secrets_file.exists():

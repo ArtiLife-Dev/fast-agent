@@ -26,6 +26,7 @@ from mcp import ClientSession
 from mcp.types import GetPromptResult, Prompt, PromptMessage, ReadResourceResult
 from pydantic import BaseModel
 
+from mcp_agent.core.agent_types import AgentType
 from mcp_agent.core.request_params import RequestParams
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
 
@@ -137,7 +138,7 @@ class AgentProtocol(AugmentedLLMProtocol, Protocol):
     name: str
 
     @property
-    def agent_type(self) -> str:
+    def agent_type(self) -> AgentType:
         """Return the type of this agent"""
         ...
 

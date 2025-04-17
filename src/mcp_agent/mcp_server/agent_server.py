@@ -143,13 +143,38 @@ class AgentMCPServer:
             self.mcp_server.settings.host = host
             self.mcp_server.settings.port = port
 
-        try:
-            self.mcp_server.run(transport=transport)
-        except KeyboardInterrupt:
-            print("\nServer stopped by user (CTRL+C)")
-        finally:
-            # Run an async cleanup in a new event loop
-            asyncio.run(self.shutdown())
+            # For synchronous run, we can use the simpler approach
+            try:
+                # Add any server attributes that might help with shutdown
+                if not hasattr(self.mcp_server, "_server_should_exit"):
+                    self.mcp_server._server_should_exit = False
+
+                # Run the server
+                self.mcp_server.run(transport=transport)
+            except KeyboardInterrupt:
+                print("\nServer stopped by user (CTRL+C)")
+            except SystemExit as e:
+                # Handle normal exit
+                print(f"\nServer exiting with code {e.code}")
+                # Re-raise to allow normal exit process
+                raise
+            except Exception as e:
+                print(f"\nServer error: {e}")
+            finally:
+                # Run an async cleanup in a new event loop
+                try:
+                    asyncio.run(self.shutdown())
+                except (SystemExit, KeyboardInterrupt):
+                    # These are expected during shutdown
+                    pass
+        else:  # stdio
+            try:
+                self.mcp_server.run(transport=transport)
+            except KeyboardInterrupt:
+                print("\nServer stopped by user (CTRL+C)")
+            finally:
+                # Minimal cleanup for stdio
+                asyncio.run(self._cleanup_stdio())
 
     async def run_async(
         self, transport: str = "sse", host: str = "0.0.0.0", port: int = 8000
@@ -169,20 +194,26 @@ class AgentMCPServer:
             try:
                 # Wait for the server task to complete
                 await self._server_task
-            except asyncio.CancelledError:
-                logger.info("Server task cancelled.")
-                print("\nServer task cancelled.")
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                # Both cancellation and KeyboardInterrupt are expected during shutdown
+                logger.info("Server stopped via cancellation or interrupt")
+                print("\nServer stopped")
+            except SystemExit as e:
+                # Handle normal exit cleanly
+                logger.info(f"Server exiting with code {e.code}")
+                print(f"\nServer exiting with code {e.code}")
+                # If this is exit code 0, let it propagate for normal exit
+                if e.code == 0:
+                    raise
             except Exception as e:
                 logger.error(f"Server error: {e}", exc_info=True)
                 print(f"\nServer error: {e}")
             finally:
-                # Ensure cleanup happens
-                await self.shutdown()
-                logger.info("Server shutdown complete.")
+                # Only do minimal cleanup - don't try to be too clever
+                await self._cleanup_stdio()
                 print("\nServer shutdown complete.")
         else:  # stdio
             # For STDIO, use simpler approach that respects STDIO lifecycle
-            # STDIO will naturally terminate when streams close
             try:
                 # Run directly without extra monitoring or signal handlers
                 # This preserves the natural lifecycle of STDIO connections
@@ -190,9 +221,14 @@ class AgentMCPServer:
             except (asyncio.CancelledError, KeyboardInterrupt):
                 logger.info("Server stopped (CTRL+C)")
                 print("\nServer stopped (CTRL+C)")
-
+            except SystemExit as e:
+                # Handle normal exit cleanly
+                logger.info(f"Server exiting with code {e.code}")
+                print(f"\nServer exiting with code {e.code}")
+                # If this is exit code 0, let it propagate for normal exit
+                if e.code == 0:
+                    raise
             # Only perform minimal cleanup needed for STDIO
-            # Don't use our full shutdown procedure which could keep process alive
             await self._cleanup_stdio()
 
     async def _run_server_with_shutdown(self, transport: str):
@@ -246,7 +282,6 @@ class AgentMCPServer:
             force_shutdown_task = asyncio.create_task(self._force_shutdown_event.wait())
             timeout_task = asyncio.create_task(asyncio.sleep(self._shutdown_timeout))
 
-            # Wait for either force shutdown or timeout
             done, pending = await asyncio.wait(
                 [force_shutdown_task, timeout_task], return_when=asyncio.FIRST_COMPLETED
             )
@@ -255,21 +290,16 @@ class AgentMCPServer:
             for task in pending:
                 task.cancel()
 
-            # Determine the shutdown reason
+            # Determine shutdown reason
             if force_shutdown_task in done:
-                logger.info("Force shutdown requested")
-                print("\nForced shutdown initiated...")
+                logger.info("Force shutdown requested by user")
+                print("\nForce shutdown initiated...")
             else:
                 logger.info(f"Graceful shutdown timed out after {self._shutdown_timeout} seconds")
                 print(f"\nGraceful shutdown timed out after {self._shutdown_timeout} seconds")
 
-            # Force close any remaining SSE connections
-            await self._close_sse_connections()
+                os._exit(0)
 
-            # Cancel the server task if running
-            if self._server_task and not self._server_task.done():
-                logger.info("Cancelling server task")
-                self._server_task.cancel()
         except asyncio.CancelledError:
             # Monitor was cancelled - clean exit
             pass
@@ -302,10 +332,35 @@ class AgentMCPServer:
                 for session_id, writer in writers:
                     try:
                         logger.debug(f"Closing SSE connection: {session_id}")
+                        # Instead of aclose, try to close more gracefully
+                        # Send a special event to notify client, then close
+                        try:
+                            if hasattr(writer, "send") and not getattr(writer, "_closed", False):
+                                try:
+                                    # Try to send a close event if possible
+                                    await writer.send(Exception("Server shutting down"))
+                                except (AttributeError, asyncio.CancelledError):
+                                    pass
+                        except Exception:
+                            pass
+
+                        # Now close the stream
                         await writer.aclose()
                         sse._read_stream_writers.pop(session_id, None)
                     except Exception as e:
                         logger.error(f"Error closing SSE connection {session_id}: {e}")
+
+        # If we have a ASGI lifespan hook, try to signal closure
+        if (
+            hasattr(self.mcp_server, "_lifespan_state")
+            and self.mcp_server._lifespan_state == "started"
+        ):
+            logger.debug("Attempting to signal ASGI lifespan shutdown")
+            try:
+                if hasattr(self.mcp_server, "_on_shutdown"):
+                    await self.mcp_server._on_shutdown()
+            except Exception as e:
+                logger.error(f"Error during ASGI lifespan shutdown: {e}")
 
     async def with_bridged_context(self, agent_context, mcp_context, func, *args, **kwargs):
         """
@@ -374,18 +429,45 @@ class AgentMCPServer:
         # Signal shutdown
         self._graceful_shutdown_event.set()
 
-        # Close SSE connections
-        await self._close_sse_connections()
+        try:
+            # Close SSE connections
+            await self._close_sse_connections()
 
-        # Close any resources in the exit stack
-        await self._exit_stack.aclose()
+            # Close any resources in the exit stack
+            await self._exit_stack.aclose()
 
-        # Shutdown any agent resources
-        for agent_name, agent in self.agent_app._agents.items():
-            try:
-                if hasattr(agent, "shutdown"):
-                    await agent.shutdown()
-            except Exception as e:
-                logger.error(f"Error shutting down agent {agent_name}: {e}")
+            # Shutdown any agent resources
+            for agent_name, agent in self.agent_app._agents.items():
+                try:
+                    if hasattr(agent, "shutdown"):
+                        await agent.shutdown()
+                except Exception as e:
+                    logger.error(f"Error shutting down agent {agent_name}: {e}")
+        except Exception as e:
+            # Log any errors but don't let them prevent shutdown
+            logger.error(f"Error during shutdown: {e}", exc_info=True)
+        finally:
+            logger.info("Full shutdown complete")
 
-        logger.info("Full shutdown complete")
+    async def _cleanup_minimal(self):
+        """Perform minimal cleanup before simulating a KeyboardInterrupt."""
+        logger.info("Performing minimal cleanup before interrupt")
+
+        # Only close SSE connection writers directly
+        if (
+            hasattr(self.mcp_server, "_sse_transport")
+            and self.mcp_server._sse_transport is not None
+        ):
+            sse = self.mcp_server._sse_transport
+
+            # Close all read stream writers
+            if hasattr(sse, "_read_stream_writers"):
+                for session_id, writer in list(sse._read_stream_writers.items()):
+                    try:
+                        await writer.aclose()
+                    except Exception:
+                        # Ignore errors during cleanup
+                        pass
+
+        # Clear active connections set to prevent further operations
+        self._active_connections.clear()

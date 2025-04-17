@@ -21,6 +21,9 @@ from mcp_agent.core.prompt import Prompt
         "gpt-4o-mini",  # OpenAI model
         "haiku35",  # Anthropic model
         "deepseek",
+        #        "generic.qwen2.5:latest",
+        "generic.llama3.2:latest",
+        "openrouter.google/gemini-2.0-flash-001",
     ],
 )
 async def test_basic_textual_prompting(fast_agent, model_name):

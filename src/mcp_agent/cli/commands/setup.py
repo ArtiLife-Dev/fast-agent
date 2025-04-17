@@ -190,7 +190,7 @@ def init(
     # Check for existing .gitignore
     needs_gitignore = not find_gitignore(config_path)
 
-    console.print("\n[bold]fast-agent Setup[/bold]\n")
+    console.print("\n[bold]fast-agent setup[/bold]\n")
     console.print("This will create the following files:")
     console.print(f"  - {config_path}/fastagent.config.yaml")
     console.print(f"  - {config_path}/fastagent.secrets.yaml")

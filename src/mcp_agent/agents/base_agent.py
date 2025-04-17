@@ -32,7 +32,7 @@ from mcp.types import (
 )
 from pydantic import BaseModel
 
-from mcp_agent.core.agent_types import AgentConfig
+from mcp_agent.core.agent_types import AgentConfig, AgentType
 from mcp_agent.core.exceptions import PromptExitError
 from mcp_agent.core.prompt import Prompt
 from mcp_agent.core.request_params import RequestParams
@@ -623,7 +623,7 @@ class BaseAgent(MCPAggregator, AgentProtocol):
         return response.first_text()
 
     @property
-    def agent_type(self) -> str:
+    def agent_type(self) -> AgentType:
         """
         Return the type of this agent.
 
@@ -632,7 +632,7 @@ class BaseAgent(MCPAggregator, AgentProtocol):
         Returns:
             String representing the agent type
         """
-        return self.config.agent_type
+        return AgentType.BASIC
 
     @property
     def message_history(self) -> List[PromptMessageMultipart]:

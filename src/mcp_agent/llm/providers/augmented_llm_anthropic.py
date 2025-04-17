@@ -1,9 +1,9 @@
-import os
 from typing import TYPE_CHECKING, List
 
 from mcp.types import EmbeddedResource, ImageContent, TextContent
 
 from mcp_agent.core.prompt import Prompt
+from mcp_agent.llm.provider_types import Provider
 from mcp_agent.llm.providers.multipart_converter_anthropic import (
     AnthropicConverter,
 )
@@ -51,12 +51,12 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
     """
 
     def __init__(self, *args, **kwargs) -> None:
-        self.provider = "Anthropic"
         # Initialize logger - keep it simple without name reference
         self.logger = get_logger(__name__)
 
-        # Now call super().__init__
-        super().__init__(*args, type_converter=AnthropicSamplingConverter, **kwargs)
+        super().__init__(
+            *args, provider=Provider.ANTHROPIC, type_converter=AnthropicSamplingConverter, **kwargs
+        )
 
     def _initialize_default_params(self, kwargs: dict) -> RequestParams:
         """Initialize Anthropic-specific default parameters"""
@@ -83,7 +83,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         Override this method to use a different LLM.
         """
 
-        api_key = self._api_key(self.context.config)
+        api_key = self._api_key()
         base_url = self._base_url()
         if base_url and base_url.endswith("/v1"):
             base_url = base_url.rstrip("/v1")
@@ -276,27 +276,6 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         self._log_chat_finished(model=model)
 
         return responses
-
-    def _api_key(self, config):
-        api_key = None
-
-        if hasattr(config, "anthropic") and config.anthropic:
-            api_key = config.anthropic.api_key
-            if api_key == "<your-api-key-here>":
-                api_key = None
-
-        if api_key is None:
-            api_key = os.getenv("ANTHROPIC_API_KEY")
-
-        if not api_key:
-            raise ProviderKeyError(
-                "Anthropic API key not configured",
-                "The Anthropic API key is required but not set.\n"
-                "Add it to your configuration file under anthropic.api_key "
-                "or set the ANTHROPIC_API_KEY environment variable.",
-            )
-
-        return api_key
 
     async def generate_messages(
         self,

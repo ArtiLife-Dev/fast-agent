@@ -64,7 +64,7 @@ async def test_disallows_empty_agents():
     """Test that RouterAgent raises AgentConfigError when no agents are provided."""
     # Attempt to create a router with no agents
     with pytest.raises(AgentConfigError):
-        RouterAgent(config=AgentConfig("test_router"), agents=[])
+        RouterAgent(config=AgentConfig(name="test_router"), agents=[])
 
 
 @pytest.mark.asyncio
@@ -99,7 +99,7 @@ async def test_single_agent_shortcircuit():
     agent = Agent(AgentConfig(name="only_agent", instruction="The only available agent"))
 
     # Create router with a single agent
-    router = RouterAgent(config=AgentConfig("test_router"), agents=[agent])
+    router = RouterAgent(config=AgentConfig(name="test_router"), agents=[agent])
     await router.initialize()
 
     # Test routing directly returns the single agent without LLM call

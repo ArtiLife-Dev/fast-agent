@@ -27,6 +27,7 @@ from mcp_agent.core.prompt import Prompt
 from mcp_agent.core.request_params import RequestParams
 from mcp_agent.event_progress import ProgressAction
 from mcp_agent.llm.memory import Memory, SimpleMemory
+from mcp_agent.llm.provider_types import Provider
 from mcp_agent.llm.sampling_format_converter import (
     BasicFormatConverter,
     ProviderFormatConverter,
@@ -64,10 +65,11 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
     selecting appropriate tools, and determining what information to retain.
     """
 
-    provider: str | None = None
+    provider: Provider | None = None
 
     def __init__(
         self,
+        provider: Provider,
         agent: Optional["Agent"] = None,
         server_names: List[str] | None = None,
         instruction: str | None = None,
@@ -104,7 +106,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         self.aggregator = agent if agent is not None else MCPAggregator(server_names or [])
         self.name = agent.name if agent else name
         self.instruction = agent.instruction if agent else instruction
-
+        self.provider = provider
         # memory contains provider specific API types.
         self.history: Memory[MessageParamT] = SimpleMemory[MessageParamT]()
 
@@ -480,3 +482,9 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
             List of PromptMessageMultipart objects representing the conversation history
         """
         return self._message_history
+
+    def _api_key(self):
+        from mcp_agent.llm.provider_key_manager import ProviderKeyManager
+
+        assert self.provider
+        return ProviderKeyManager.get_api_key(self.provider.value, self.context.config)

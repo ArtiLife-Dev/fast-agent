@@ -46,11 +46,11 @@ class OrchestratorAgent(BaseAgent):
     to specialized worker agents, synthesizing their results into a cohesive output.
     Supports both full planning and iterative planning modes.
     """
-    
+
     @property
-    def agent_type(self) -> str:
+    def agent_type(self) -> AgentType:
         """Return the type of this agent."""
-        return AgentType.ORCHESTRATOR.value
+        return AgentType.ORCHESTRATOR
 
     def __init__(
         self,
