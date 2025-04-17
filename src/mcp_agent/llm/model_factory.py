@@ -10,6 +10,7 @@ from mcp_agent.llm.augmented_llm_passthrough import PassthroughLLM
 from mcp_agent.llm.augmented_llm_playback import PlaybackLLM
 from mcp_agent.llm.provider_types import Provider
 from mcp_agent.llm.providers.augmented_llm_anthropic import AnthropicAugmentedLLM
+from mcp_agent.llm.providers.augmented_llm_azureopenai import AzureOpenAIAugmentedLLM
 from mcp_agent.llm.providers.augmented_llm_deepseek import DeepSeekAugmentedLLM
 
 # Import the placeholder Gemini LLM class
@@ -26,6 +27,7 @@ from mcp_agent.mcp.interfaces import AugmentedLLMProtocol
 LLMClass = Union[
     Type[AnthropicAugmentedLLM],
     Type[OpenAIAugmentedLLM],
+    Type[AzureOpenAIAugmentedLLM],
     Type[PassthroughLLM],
     Type[PlaybackLLM],
     Type[DeepSeekAugmentedLLM],
@@ -76,6 +78,17 @@ class ModelFactory:
         "o1": Provider.OPENAI,
         "o1-preview": Provider.OPENAI,
         "o3-mini": Provider.OPENAI,
+        "o4-mini": Provider.OPENAI,
+        "azure-gpt-4o": Provider.AZUREOPENAI,
+        "azure-gpt-4o-mini": Provider.AZUREOPENAI,
+        "azure-gpt-4.1": Provider.AZUREOPENAI,
+        "azure-gpt-4.1-mini": Provider.AZUREOPENAI,
+        "azure-gpt-4.1-nano": Provider.AZUREOPENAI,
+        "azure-o1-mini": Provider.AZUREOPENAI,
+        "azure-o1": Provider.AZUREOPENAI,
+        "azure-o1-preview": Provider.AZUREOPENAI,
+        "azure-o3-mini": Provider.AZUREOPENAI,
+        "azure-o4-mini": Provider.AZUREOPENAI,
         "claude-3-haiku-20240307": Provider.ANTHROPIC,
         "claude-3-5-haiku-20241022": Provider.ANTHROPIC,
         "claude-3-5-haiku-latest": Provider.ANTHROPIC,
@@ -128,6 +141,7 @@ class ModelFactory:
         Provider.GENERIC: GenericAugmentedLLM,
         Provider.OPENROUTER: OpenRouterAugmentedLLM,
         Provider.GOOGLE: GeminiAugmentedLLM, # Add Google provider class mapping
+        Provider.AZUREOPENAI: AzureOpenAIAugmentedLLM,
     }
 
     # Mapping of special model names to their specific LLM classes
@@ -218,3 +232,4 @@ class ModelFactory:
             return llm
 
         return factory
+    

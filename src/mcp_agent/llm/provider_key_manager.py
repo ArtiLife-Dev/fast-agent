@@ -17,6 +17,7 @@ PROVIDER_ENVIRONMENT_MAP: Dict[str, str] = {
     "openrouter": "OPENROUTER_API_KEY",
     "generic": "GENERIC_API_KEY",
     "google": "GOOGLE_API_KEY",
+    "azureopenai": "AZURE_OPENAI_API_KEY"
 }
 API_KEY_HINT_TEXT = "<your-api-key-here>"
 

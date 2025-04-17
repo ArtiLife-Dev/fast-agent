@@ -15,4 +15,5 @@ class Provider(Enum):
     GENERIC = "generic"
     OPENROUTER = "openrouter"
     GOOGLE = "google"  # Add Google provider
+    AZUREOPENAI = "azureopenai"  # Add Azure OpenAI provider
     

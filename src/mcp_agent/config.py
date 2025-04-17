@@ -125,6 +125,19 @@ class OpenAISettings(BaseModel):
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
+class AzureOpenAISettings(BaseModel):
+    """
+    Settings for using Azure OpenAI models in the MCP Agent application.
+    """
+
+    api_key: str | None = None
+    reasoning_effort: Literal["low", "medium", "high"] = "medium"
+
+    base_url: str | None = None
+    api_version: str | None = None
+
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 class DeepSeekSettings(BaseModel):
     """
@@ -286,6 +299,9 @@ class Settings(BaseSettings):
 
     openai: OpenAISettings | None = None
     """Settings for using OpenAI models in the fast-agent application"""
+    
+    azureopenai: AzureOpenAISettings | None = None
+    """Settings for using Azure OpenAI models in the MCP Agent application"""
 
     deepseek: DeepSeekSettings | None = None
     """Settings for using DeepSeek models in the fast-agent application"""
