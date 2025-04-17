@@ -210,7 +210,7 @@ class PeersAgent(BaseAgent):
                         "do you have a contribution to share with the group? \n"
                         "If yes, wrap the part you want to share in <share>...</share> tags within your response. "
                         "If you have nothing to add this round, include the <abstain/> tag in your response. "
-                        "Remember to include your reasoning/tool use outside the <share> tags for your own history."
+                        # "Remember to include your reasoning/tool use outside the <share> tags for your own history."
                     ))]
                 )
                 individual_history.append(participation_prompt)

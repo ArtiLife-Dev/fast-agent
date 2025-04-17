@@ -33,6 +33,9 @@ from mcp_agent.core.direct_decorators import (
     parallel as parallel_decorator,
 )
 from mcp_agent.core.direct_decorators import (
+    peers as peers_decorator,
+)
+from mcp_agent.core.direct_decorators import (
     router as router_decorator,
 )
 from mcp_agent.core.direct_factory import (
@@ -202,6 +205,7 @@ class FastAgent:
     chain = chain_decorator
     parallel = parallel_decorator
     evaluator_optimizer = evaluator_optimizer_decorator
+    peers = peers_decorator
 
     @asynccontextmanager
     async def run(self):

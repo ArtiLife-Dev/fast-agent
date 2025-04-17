@@ -1,28 +1,21 @@
+import base64
 import json
-from typing import Any, Dict, List, Sequence, Union, cast
+from typing import Any, List
 
-from google.generativeai import types as genai_types
-from mcp.types import ( # MCP Tool related types
-    ListToolsResult,
-    Schema,
-    ToolInfo,
+from google.genai import types as genai_types
+from mcp.types import (  # MCP Tool related types
+    BlobResourceContents,
     # MCP Message related types
-    BlobResourceContents,
-    CallToolResult,
-    EmbeddedResource,
-    ImageContent,
-    BlobResourceContents,
     CallToolResult,
     EmbeddedResource,
     ImageContent,
     PromptMessage,
-    TextContent,
     TextResourceContents,
+    Tool,
 )
 
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.helpers.content_helpers import (
-    get_blob_data,
     get_image_data,
     get_resource_uri,
     get_text,
@@ -32,7 +25,6 @@ from mcp_agent.mcp.helpers.content_helpers import (
 )
 from mcp_agent.mcp.mime_utils import guess_mime_type, is_text_mime_type
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
-from mcp_agent.mcp.schemas import normalize_schema_properties # Helper for schema normalization
 
 _logger = get_logger("multipart_converter_gemini")
 
@@ -66,6 +58,20 @@ SUPPORTED_VIDEO_MIME_TYPES = {
     "video/3gpp",
 }
 
+SUPPORTED_DOCUMENT_MIME_TYPES = {
+    "application/pdf",
+    "application/x-javascript",
+    "text/javascript",
+    "application/x-python",
+    "text/x-python",
+    "text/plain",
+    "text/html",
+    "text/css",
+    "text/md",
+    "text/csv",
+    "text/xml",
+    "text/rtf",
+}
 
 class GeminiConverter:
     """Converts MCP message types to Google Gemini API format."""
@@ -81,6 +87,10 @@ class GeminiConverter:
     @staticmethod
     def _is_supported_video_type(mime_type: str) -> bool:
         return mime_type in SUPPORTED_VIDEO_MIME_TYPES
+    
+    @staticmethod
+    def _is_supported_document_type(mime_type: str) -> bool:
+        return mime_type in SUPPORTED_DOCUMENT_MIME_TYPES
 
     @staticmethod
     def convert_to_gemini(
@@ -147,45 +157,62 @@ class GeminiConverter:
                          mime_type = "application/octet-stream" # Default if no URI or guess
 
                     # Handle specific resource types
-                    if mime_type == "application/pdf":
-                        blob_data = get_blob_data(resource)
-                        if blob_data:
-                             gemini_parts.append(
-                                 genai_types.Part(
-                                     inline_data=genai_types.Blob(
-                                         mime_type=mime_type, data=blob_data
-                                     )
-                                 )
-                             )
-                        else:
-                             _logger.warning(f"Skipping PDF resource with no data: {uri_str}")
-                             gemini_parts.append(genai_types.Part(text=f"[PDF Resource without data: {uri_str}]"))
+                    if GeminiConverter._is_supported_document_type(mime_type):
+                        if isinstance(resource_content, TextResourceContents):
+                            text = get_text(resource)
+                            if text is not None:
+                                gemini_parts.append(genai_types.Part(text=text))
+                            else:
+                                _logger.warning(f"Skipping Document resource with no text: {uri_str}")
+                                gemini_parts.append(genai_types.Part(text=f"[Document Resource without text: {uri_str}]"))
+                        elif isinstance(resource_content, BlobResourceContents):
+                            blob_data = base64.b64decode(resource_content.blob)
+                            if blob_data:
+                                gemini_parts.append(
+                                    genai_types.Part(
+                                        inline_data=genai_types.Blob(
+                                            mime_type=mime_type, data=blob_data
+                                        )
+                                    )
+                                )
+                            else:
+                                _logger.warning(f"Skipping Document resource with no data: {uri_str}")
+                                gemini_parts.append(genai_types.Part(text=f"[Document Resource without data or decode failed: {uri_str}]"))
+                            
                     elif GeminiConverter._is_supported_audio_type(mime_type):
-                        blob_data = get_blob_data(resource)
-                        if blob_data:
-                             gemini_parts.append(
-                                 genai_types.Part(
-                                     inline_data=genai_types.Blob(
-                                         mime_type=mime_type, data=blob_data
-                                     )
-                                 )
-                             )
+                        if isinstance(resource_content, BlobResourceContents):
+                            blob_data = base64.b64decode(resource_content.blob)
+                            if blob_data:
+                                gemini_parts.append(
+                                    genai_types.Part(
+                                        inline_data=genai_types.Blob(
+                                            mime_type=mime_type, data=blob_data
+                                        )
+                                    )
+                                )
+                            else:
+                                _logger.warning(f"Skipping Audio resource with no data: {uri_str}")
+                                gemini_parts.append(genai_types.Part(text=f"[Audio Resource without data: {uri_str}]"))
                         else:
-                             _logger.warning(f"Skipping Audio resource with no data: {uri_str}")
-                             gemini_parts.append(genai_types.Part(text=f"[Audio Resource without data: {uri_str}]"))
+                            _logger.warning(f"Skipping unsupported audio type: {mime_type} ({uri_str})")
+                            gemini_parts.append(genai_types.Part(text=f"[Unsupported Audio Resource: {mime_type} at {uri_str}]"))
                     elif GeminiConverter._is_supported_video_type(mime_type):
-                        blob_data = get_blob_data(resource)
-                        if blob_data:
-                             gemini_parts.append(
-                                 genai_types.Part(
-                                     inline_data=genai_types.Blob(
-                                         mime_type=mime_type, data=blob_data
-                                     )
-                                 )
-                             )
+                        if isinstance(resource_content, BlobResourceContents):
+                            blob_data = base64.b64decode(resource_content.blob)
+                            if blob_data:
+                                gemini_parts.append(
+                                    genai_types.Part(
+                                        inline_data=genai_types.Blob(
+                                            mime_type=mime_type, data=blob_data
+                                        )
+                                    )
+                                )
+                            else:
+                                _logger.warning(f"Skipping Video resource with no data: {uri_str}")
+                                gemini_parts.append(genai_types.Part(text=f"[Video Resource without data: {uri_str}]"))
                         else:
-                             _logger.warning(f"Skipping Video resource with no data: {uri_str}")
-                             gemini_parts.append(genai_types.Part(text=f"[Video Resource without data: {uri_str}]"))
+                            _logger.warning(f"Skipping unsupported video type: {mime_type} ({uri_str})")
+                            gemini_parts.append(genai_types.Part(text=f"[Unsupported Video Resource: {mime_type} at {uri_str}]"))
                     elif is_text_mime_type(mime_type) or isinstance(resource_content, TextResourceContents):
                          # Handle other text-based resources (HTML, CSV, TXT, etc.)
                          text = get_text(resource)
@@ -197,11 +224,12 @@ class GeminiConverter:
                     elif GeminiConverter._is_supported_image_type(mime_type):
                          # Handle images embedded as resources
                          image_data = get_image_data(resource) # Handles BlobResourceContents too
-                         if image_data:
+                         image_bytes = base64.b64decode(image_data) if image_data else None
+                         if image_bytes:
                              gemini_parts.append(
                                  genai_types.Part(
                                      inline_data=genai_types.Blob(
-                                         mime_type=mime_type, data=image_data
+                                         mime_type=mime_type, data=image_bytes
                                      )
                                  )
                              )
@@ -255,7 +283,7 @@ class GeminiConverter:
         return GeminiConverter.convert_to_gemini(multipart)
 
     @staticmethod
-    def _convert_mcp_schema_to_gemini_schema(mcp_schema: Schema) -> genai_types.Schema:
+    def _convert_mcp_schema_to_gemini_schema(mcp_schema: dict[str, Any]) -> genai_types.Schema:
         """Recursively convert MCP Schema dictionary to Gemini Schema object."""
         gemini_type_str = str(mcp_schema.get("type", "any")).upper()
         try:
@@ -290,26 +318,30 @@ class GeminiConverter:
 
 
     @staticmethod
-    def convert_mcp_tools_to_gemini(mcp_tools: List[ToolInfo]) -> List[genai_types.Tool]:
-        """Convert a list of MCP ToolInfo objects to Gemini Tool objects."""
+    def convert_mcp_tools_to_gemini(mcp_tools: List[Tool]) -> List[genai_types.Tool]:
+        """Convert a list of MCP Tool objects to Gemini Tool objects."""
         gemini_tools: List[genai_types.Tool] = []
         function_declarations: List[genai_types.FunctionDeclaration] = []
 
         for tool in mcp_tools:
             try:
                 # Normalize schema before conversion
-                normalized_schema = normalize_schema_properties(tool.inputSchema or {})
+                # normalized_schema = normalize_schema_properties(tool.inputSchema or {})
 
-                parameters = None
-                if normalized_schema:
-                     parameters = GeminiConverter._convert_mcp_schema_to_gemini_schema(
-                         cast(Schema, normalized_schema) # Cast after normalization
-                     )
+                # parameters = None
+                # if normalized_schema:
+                #      parameters = GeminiConverter._convert_mcp_schema_to_gemini_schema(
+                #          cast(Schema, normalized_schema) # Cast after normalization
+                #      )
 
                 declaration = genai_types.FunctionDeclaration(
                     name=tool.name,
                     description=tool.description or "", # Ensure description is not None
-                    parameters=parameters,
+                    parameters={
+                                k: v
+                                for k, v in tool.inputSchema.items()
+                                if k not in ["additionalProperties", "$schema"]
+                            },
                 )
                 function_declarations.append(declaration)
             except Exception as e:
@@ -362,7 +394,7 @@ class GeminiConverter:
 
         # Gemini expects the 'response' field in FunctionResponse
         # to contain the structured data or error message.
-        function_response_data = {"result": response_content}
+        function_response_data = {"output": response_content}
         if error_occurred:
             function_response_data = {"error": str(response_content)} # Structure error clearly
 
@@ -398,7 +430,7 @@ class GeminiConverter:
                  ))
 
         # Gemini expects tool responses in a message with role 'tool'
-        return genai_types.ContentDict(role="tool", parts=tool_response_parts)
+        return genai_types.ContentDict(role="user", parts=tool_response_parts)
 
     # TODO: Implement creation of tool role message in Phase 4
     # @staticmethod

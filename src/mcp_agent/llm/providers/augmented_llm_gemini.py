@@ -46,7 +46,7 @@ class GeminiAugmentedLLM(AugmentedLLM[ContentDict, GenerateContentResponse]):
         self.provider = "Google"
         self.logger = get_logger(__name__)
         # Initialize client once during instantiation
-        self._client: Optional[genai.GenerativeModel] = None
+        self._client: Optional[genai.Client] = None
         super().__init__(*args, type_converter=GeminiSamplingConverter, **kwargs)
 
     def _initialize_default_params(self, kwargs: dict) -> RequestParams:
@@ -83,16 +83,19 @@ class GeminiAugmentedLLM(AugmentedLLM[ContentDict, GenerateContentResponse]):
 
         return api_key
 
-    def _get_client(self, model_name: str) -> genai.GenerativeModel:
+    def _get_client(self) -> genai.Client:
         """Initializes and returns the Gemini client."""
-        if self._client and self._client.model_name == f"models/{model_name}":
+        if self._client:
              return self._client
 
         api_key = self._api_key(self.context.config)
-        genai.configure(api_key=api_key)
+        # genai.configure(api_key=api_key)
         # TODO: Add support for Vertex AI client initialization if needed later
         # client = genai.Client(vertexai=True, project='your-project-id', location='us-central1')
-        self._client = genai.GenerativeModel(model_name)
+        self._client = genai.Client(
+            api_key=api_key,
+            # vertexai=True, # Uncomment if using Vertex AI
+        )
         return self._client
 
     async def generate_internal(
@@ -106,7 +109,13 @@ class GeminiAugmentedLLM(AugmentedLLM[ContentDict, GenerateContentResponse]):
         """
         params = self.get_request_params(request_params)
         model_name = params.model or DEFAULT_GEMINI_MODEL
-        client = self._get_client(model_name)
+        built_in_tools = []
+        if "-code" in model_name:
+            built_in_tools.append("code_execution")
+        if "-search" in model_name:
+            built_in_tools.append("google_search")
+        model_name = model_name.replace("-code", "").replace("-search", "")
+        client = self._get_client()
 
         # Prepare history and current message
         history: List[ContentDict] = []
@@ -130,10 +139,10 @@ class GeminiAugmentedLLM(AugmentedLLM[ContentDict, GenerateContentResponse]):
         # Check model name variant and add built-in tools
         # Note: Using simple string checks. More robust parsing might be needed if names get complex.
         # Extract base model name for checks if needed, e.g., model_name.replace("-code","").replace("-search","")
-        if "-code" in model_name:
+        if "code_execution" in built_in_tools:
             self.logger.debug(f"Enabling Code Execution for model: {model_name}")
-            gemini_native_tools.append(genai_types.Tool(code_execution=genai_types.CodeExecution())) # Correct type
-        if "-search" in model_name:
+            gemini_native_tools.append(genai_types.Tool(code_execution=genai_types.ToolCodeExecution())) # Correct type
+        if "google_search" in built_in_tools:
              self.logger.debug(f"Enabling Google Search for model: {model_name}")
              # Use GoogleSearch for 2.0+ models, GoogleSearchRetrieval for 1.5
              # Assuming model names clearly indicate version or using a helper to determine this.
@@ -143,35 +152,34 @@ class GeminiAugmentedLLM(AugmentedLLM[ContentDict, GenerateContentResponse]):
              # gemini_native_tools.append(genai_types.Tool(google_search_retrieval=genai_types.GoogleSearchRetrieval()))
 
         all_tools = available_mcp_tools + gemini_native_tools
-
-        # Prepare generation config
-        generation_config = genai_types.GenerationConfig(
-            # candidate_count=params.candidate_count or 1, # If needed
-            # stop_sequences=params.stopSequences, # If needed
-            max_output_tokens=params.maxTokens,
-            temperature=params.temperature,
-            # top_p=params.top_p, # If needed
-            # top_k=params.top_k, # If needed
-        )
+        
         safety_settings = None # TODO: Add safety settings if needed
-
-        system_instruction = params.systemPrompt or self.instruction
 
         # --- Main Loop for Tool Calls (Simplified for now) ---
         final_response_content: list[TextContent | ImageContent | EmbeddedResource] = []
         current_turn = 1 # Track turns for logging/debugging
+        
+        generation_config = genai_types.GenerateContentConfig(
+            # candidate_count=params.candidate_count or 1, # If needed
+            # stop_sequences=params.stopSequences, # If needed
+            system_instruction=params.systemPrompt or self.instruction,
+            max_output_tokens=params.maxTokens,
+            temperature=params.temperature,
+            tools=all_tools if all_tools else None,
+            safety_settings=safety_settings,
+            # top_p=params.top_p, # If needed
+            # top_k=params.top_k, # If needed
+        )
 
         while current_turn <= params.max_iterations:
             self._log_chat_progress(self.chat_turn(), model=model_name)
             self.logger.debug(f"Calling Gemini. Contents: {current_contents}, Config: {generation_config}, Tools: {all_tools}")
 
             try:
-                response = await client.generate_content_async(
+                response = client.models.generate_content(
+                    model=model_name,
                     contents=current_contents,
-                    generation_config=generation_config,
-                    safety_settings=safety_settings,
-                    tools=all_tools if all_tools else None,
-                    system_instruction=system_instruction if system_instruction else None,
+                    config=generation_config,
                 )
                 self.logger.debug(f"Gemini response turn {current_turn}:", data=response)
 
@@ -190,6 +198,11 @@ class GeminiAugmentedLLM(AugmentedLLM[ContentDict, GenerateContentResponse]):
             candidate = response.candidates[0]
             content = candidate.content # This is a ContentDict
 
+            if not content.parts:
+                self.logger.warning("Gemini response content has no parts.")
+                final_response_content.append(TextContent(type="text", text="[No content parts]"))
+                break
+            
             # Check for function calls and code execution results
             # Use getattr for safer access
             has_function_call = any(getattr(part, 'function_call', None) for part in content.parts)
@@ -287,7 +300,9 @@ class GeminiAugmentedLLM(AugmentedLLM[ContentDict, GenerateContentResponse]):
                 # Gemini args are Struct/dict-like, convert if necessary or pass directly
                 # The Gemini SDK returns args as a google.protobuf.struct_pb2.Struct
                 # Convert it to a standard Python dict for MCP
-                tool_args = MessageToDict(func_call.args) if func_call.args else {}
+                
+                # tool_args = MessageToDict(func_call.args) if func_call.args else {}
+                tool_args = func_call.args if func_call.args else {}
 
                 if i == 0: # Show assistant message only before the first tool call of the turn
                     display_text = assistant_message_text if assistant_message_text else Text("the assistant requested tool calls", style="dim green italic")
@@ -357,7 +372,7 @@ class GeminiAugmentedLLM(AugmentedLLM[ContentDict, GenerateContentResponse]):
             request_params=request_params,
         )
         # Assuming the response is primarily text for now
-        return PromptMessageMultipart.assistant(*res)
+        return PromptMessageMultipart(role="assistant", content=res)
 
     async def _apply_prompt_provider_specific(
         self,
@@ -371,7 +386,7 @@ class GeminiAugmentedLLM(AugmentedLLM[ContentDict, GenerateContentResponse]):
         if not multipart_messages:
             self.logger.warning("Attempted to apply an empty prompt.")
             # Or raise an error? Returning empty assistant for now.
-            return PromptMessageMultipart.assistant()
+            return PromptMessageMultipart(role="assistant", content=[])
 
         # Convert all MCP messages to Gemini ContentDict format
         # This assumes the history mechanism expects List[ContentDict]
@@ -386,7 +401,7 @@ class GeminiAugmentedLLM(AugmentedLLM[ContentDict, GenerateContentResponse]):
 
         if not gemini_history_content:
              self.logger.error("Failed to convert any prompt messages.")
-             return PromptMessageMultipart.assistant(TextContent(type="text", text="[Error converting prompt]"))
+             return PromptMessageMultipart(role="assistant", content=[TextContent(type="text", text="[Error converting prompt]")])
 
 
         # Check the role of the last *successfully converted* message
@@ -420,7 +435,7 @@ class GeminiAugmentedLLM(AugmentedLLM[ContentDict, GenerateContentResponse]):
              self.logger.warning(f"Prompt ended with unexpected role: {last_message_role}. Treating as complete.")
              messages_to_set_in_history = gemini_history_content
              self.history.set(messages_to_set_in_history, is_prompt=True)
-             return PromptMessageMultipart.assistant(TextContent(type="text", text="[Prompt ended unexpectedly]"))
+             return PromptMessageMultipart(role="assistant",content=[TextContent(type="text", text="[Prompt ended unexpectedly]")])
 
         # Set the history (excluding the last user message)
         self.history.set(messages_to_set_in_history, is_prompt=True)
